@@ -159,9 +159,10 @@ Imprime veredicto, backend, motivo y memoria necesaria vs. disponible. Códigos
 de salida: `0` Good, `1` Tight, `2` No, `3` Error. Útil para scripting tipo
 `ollama-fit fit X && ollama run X`.
 
-Para que funcione "global" desde cualquier directorio, instalá el binario con
-`make install` (que ejecuta `go install .`) y asegurate de que `$GOPATH/bin`
-(o `$HOME/go/bin`) esté en tu `PATH`.
+Para que funcione "global" desde cualquier directorio, seguí la sección
+[Instalación](#instalación) más arriba (el binario canónico se llama
+`ollama-fit`) y asegurate de que `$GOPATH/bin` (o `$HOME/go/bin`) esté
+en tu `PATH`.
 
 ### Ideas para iterar
 
