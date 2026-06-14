@@ -8,3 +8,4 @@ opencode.json
 .atl/
 coverage.out
 coverage.fresh.out
+dist/
