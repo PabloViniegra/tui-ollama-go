@@ -28,6 +28,11 @@ const (
 	GPUKindIntel  GPUKind = "intel"
 )
 
+// String devuelve la representación en cadena del tipo de GPU.
+func (k GPUKind) String() string {
+	return string(k)
+}
+
 // GPU describe el acelerador detectado.
 type GPU struct {
 	Name   string  // nombre comercial (ej. "NVIDIA GeForce RTX 4070")
