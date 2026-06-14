@@ -9,3 +9,4 @@ opencode.json
 coverage.out
 coverage.fresh.out
 dist/
+ollama-fit
