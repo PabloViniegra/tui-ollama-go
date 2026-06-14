@@ -23,6 +23,27 @@ func TestBytesToGB(t *testing.T) {
 	}
 }
 
+func TestGPUKindString(t *testing.T) {
+	tests := []struct {
+		kind GPUKind
+		want string
+	}{
+		{GPUKindNone, "none"},
+		{GPUKindNVIDIA, "nvidia"},
+		{GPUKindAMD, "amd"},
+		{GPUKindApple, "apple"},
+		{GPUKindIntel, "intel"},
+	}
+	for _, tc := range tests {
+		t.Run(string(tc.kind), func(t *testing.T) {
+			got := tc.kind.String()
+			if got != tc.want {
+				t.Errorf("%q.String() = %q, want %q", tc.kind, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestParseAppleVRAM(t *testing.T) {
 	tests := []struct {
 		input string
