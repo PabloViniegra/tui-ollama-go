@@ -5,3 +5,5 @@ skills-lock.json
 opencode.json
 # Local AI runtime state
 .atl/
+coverage.out
+coverage.fresh.out
