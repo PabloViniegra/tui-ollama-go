@@ -6,6 +6,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"fmt"
 	"os/exec"
 	"runtime"
 	"strconv"
@@ -59,7 +60,7 @@ func (execRunner) Run(ctx context.Context, name string, args ...string) (string,
 	defer cancel()
 	out, err := exec.CommandContext(ctx, name, args...).Output()
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("exec %s: %w", name, err)
 	}
 	return string(out), nil
 }

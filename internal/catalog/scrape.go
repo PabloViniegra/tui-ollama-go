@@ -202,7 +202,7 @@ func getDoc(ctx context.Context, doer HTTPDoer, url string) (*goquery.Document, 
 	req.Header.Set("Accept", "text/html")
 	resp, err := doer.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get %s: %w", url, err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
