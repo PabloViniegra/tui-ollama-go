@@ -20,19 +20,49 @@ GPU  Apple M3 Pro · memoria unificada (~25 GB usables por GPU)
 - Go 1.22 o superior.
 - (Opcional) GPU NVIDIA con `nvidia-smi` en el PATH para leer VRAM exacta.
 
-## Instalar con `go install`
+## Instalación
+
+El binario se llama `ollama-fit` en todos los métodos. Elegí el que prefieras:
+
+### Desde Go (cualquier plataforma con Go 1.22+)
 
 ```bash
 go install github.com/PabloViniegra/tui-ollama-go@latest
 ```
 
-El binario se instala como `tui-ollama-go` en `$GOPATH/bin`. Para usarlo como `ollama-fit`, renombralo o crea un alias:
+`go install` no soporta `-o`, así que el binario queda como `tui-ollama-go` en `$GOPATH/bin`. Para usarlo como `ollama-fit`:
 
 ```bash
 mv $(go env GOPATH)/bin/tui-ollama-go $(go env GOPATH)/bin/ollama-fit
 ```
 
-> Nota: la ruta de caché sigue siendo `ollama-fit` (`os.UserCacheDir()/ollama-fit/catalog.json`) para mantener compatibilidad con instalaciones previas.
+### macOS / Linux con Homebrew
+
+```bash
+brew tap PabloViniegra/ollama-fit
+brew install ollama-fit
+```
+
+Actualización a futuras versiones: `brew upgrade ollama-fit`.
+
+### Windows con Scoop
+
+```powershell
+scoop bucket add scoop-ollama-fit https://github.com/PabloViniegra/scoop-ollama-fit.git
+scoop install scoop-ollama-fit/ollama-fit
+```
+
+Actualización a futuras versiones: `scoop update ollama-fit`.
+
+### Binarios precompilados
+
+Descargá el archivo para tu plataforma desde
+[la última release](https://github.com/PabloViniegra/tui-ollama-go/releases/latest)
+y ponelo en tu `PATH`. Hay binarios para Linux y macOS (amd64 y arm64) y Windows
+(amd64), distribuidos como `.tar.gz` y `.zip` respectivamente.
+
+> Nota: la ruta de caché sigue siendo `ollama-fit` (`os.UserCacheDir()/ollama-fit/catalog.json`)
+> en todos los métodos, para mantener compatibilidad con instalaciones previas.
 
 ## Construir y ejecutar
 
