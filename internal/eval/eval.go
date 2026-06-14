@@ -29,8 +29,8 @@ type Result struct {
 // el contexto y el runtime. Ajustable.
 const overhead = 1.2
 
-// appleGPUFraction: fracción de la RAM unificada que Metal puede dedicar a GPU.
-const appleGPUFraction = 0.70
+// AppleGPUFraction: fracción de la RAM unificada que Metal puede dedicar a GPU.
+const AppleGPUFraction = 0.70
 
 // thresholds de memoria para la heurística.
 const (
@@ -66,7 +66,7 @@ func Evaluate(h hardware.Info, m catalog.Model) Result {
 		gpuMem = h.GPU.VRAMGB
 		gpuBackend = "GPU " + gpuLabel(h.GPU.Kind)
 	case h.AppleUnified:
-		gpuMem = appleGPUFraction * h.RAMGB
+		gpuMem = AppleGPUFraction * h.RAMGB
 		gpuBackend = "GPU Metal"
 	}
 
@@ -81,7 +81,7 @@ func Evaluate(h hardware.Info, m catalog.Model) Result {
 		return r
 	}
 	// 3) No entra entero en GPU: miramos la RAM del sistema.
-	if need <= appleGPUFraction*h.RAMGB {
+	if need <= AppleGPUFraction*h.RAMGB {
 		if gpuMem > 0 {
 			r.Verdict, r.Backend, r.Reason = Tight, "GPU+CPU", "Se reparte GPU/CPU, más lento"
 		} else if need <= cpuGoodThreshold {

@@ -36,7 +36,7 @@ func (m Model) gpuDescr() string {
 	g := m.hw.GPU
 	switch {
 	case g.Kind == hardware.GPUKindApple:
-		return fmt.Sprintf("%s · memoria unificada (~%.0f GB usables por GPU)", g.Name, 0.70*m.hw.RAMGB)
+		return fmt.Sprintf("%s · memoria unificada (~%.0f GB usables por GPU)", g.Name, eval.AppleGPUFraction*m.hw.RAMGB)
 	case g.VRAMGB > 0:
 		return fmt.Sprintf("%s · %.1f GB VRAM (%s)", g.Name, g.VRAMGB, strings.ToUpper(g.Kind.String()))
 	case g.Kind == "" || g.Kind == hardware.GPUKindNone || g.Name == "":
