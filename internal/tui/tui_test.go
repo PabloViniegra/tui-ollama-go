@@ -964,41 +964,79 @@ func TestViewRowAlignmentWithLongName(t *testing.T) {
 	}
 }
 
+// withMockClipboard reemplaza clipboardWriter por un stub durante la prueba y
+// restaura el original al terminar. Devuelve un puntero a la captura del
+// último string que se intentó copiar, para que el test pueda afirmarlo.
+func withMockClipboard(t *testing.T, retErr error) *string {
+	t.Helper()
+	var captured string
+	orig := clipboardWriter
+	clipboardWriter = func(s string) error {
+		captured = s
+		return retErr
+	}
+	t.Cleanup(func() { clipboardWriter = orig })
+	return &captured
+}
+
 // TestUpdateEnterOnModelSetsMessage es la regresión para bug 3: Enter sobre
-// un modelo debe poblar m.message con la confirmación. No afirmamos el
-// contenido del portapapeles del sistema (puede no estar disponible en CI).
+// un modelo debe poblar m.message con la confirmación. Usa un mock de
+// clipboard para no depender de xclip/xsel/wl-clipboard en CI.
 func TestUpdateEnterOnModelSetsMessage(t *testing.T) {
+	captured := withMockClipboard(t, nil)
 	m := newWithSize(hwNone(), []eval.Result{
 		{Model: catalog.Model{Name: "llama3.1:8b", SizeGB: 4.9, Params: "8B", Quant: "Q4_K_M"}, Verdict: eval.Good, Backend: "CPU", NeedGB: 5.5},
 	}, 120, 40)
 	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	m2 := nm.(Model)
 	if m2.message == "" {
-		t.Error("expected m.message set after Enter, got empty")
+		t.Fatal("expected m.message set after Enter, got empty")
+	}
+	if !strings.Contains(m2.message, "ollama run") {
+		t.Errorf("m.message should contain 'ollama run', got %q", m2.message)
 	}
 	if !strings.Contains(m2.message, "llama3.1:8b") {
 		t.Errorf("m.message should contain model name, got %q", m2.message)
 	}
-	if !strings.Contains(m2.message, "ollama run") {
-		t.Errorf("m.message should contain 'ollama run', got %q", m2.message)
+	if want := "ollama run llama3.1:8b"; *captured != want {
+		t.Errorf("clipboard received %q, want %q", *captured, want)
 	}
 }
 
 // TestUpdateEnterKeyStringEquivalent cubre la otra forma del KeyMsg (la string
 // "enter") para que ambos paths queden cubiertos.
 func TestUpdateEnterKeyStringEquivalent(t *testing.T) {
+	withMockClipboard(t, nil)
 	m := newWithSize(hwNone(), []eval.Result{
 		{Model: catalog.Model{Name: "qwen2.5:7b", SizeGB: 4.7, Params: "7B", Quant: "Q4_K_M"}, Verdict: eval.Good, Backend: "CPU", NeedGB: 5.0},
 	}, 120, 40)
 	nm, _ := m.Update(key("enter"))
 	m2 := nm.(Model)
-	if !strings.Contains(m2.message, "qwen2.5:7b") {
-		t.Errorf("Enter via key string should also set message, got %q", m2.message)
+	if !strings.Contains(m2.message, "ollama run qwen2.5:7b") {
+		t.Errorf("Enter via key string should set full command, got %q", m2.message)
+	}
+}
+
+// TestUpdateEnterClipboardError cubre el path de error: si clipboardWriter
+// falla, el footer debe mostrar el error y NO la confirmación de éxito.
+func TestUpdateEnterClipboardError(t *testing.T) {
+	withMockClipboard(t, fmt.Errorf("simulated clipboard failure"))
+	m := newWithSize(hwNone(), []eval.Result{
+		{Model: catalog.Model{Name: "mistral:7b", SizeGB: 4.1, Params: "7B", Quant: "Q4_0"}, Verdict: eval.Good, Backend: "CPU", NeedGB: 4.5},
+	}, 120, 40)
+	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m2 := nm.(Model)
+	if !strings.Contains(m2.message, "no se pudo copiar") {
+		t.Errorf("error path should show copy-fail message, got %q", m2.message)
+	}
+	if strings.Contains(m2.message, "ollama run") {
+		t.Errorf("error path should NOT show success command, got %q", m2.message)
 	}
 }
 
 // TestUpdateEnterOnEmptyViewDoesNotPanic cubre el caso borde view==0.
 func TestUpdateEnterOnEmptyViewDoesNotPanic(t *testing.T) {
+	withMockClipboard(t, nil)
 	m := newWithSize(hwNone(), nil, 120, 40)
 	m.applyFilter() // view queda vacío
 	defer func() {

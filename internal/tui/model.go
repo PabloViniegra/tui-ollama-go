@@ -65,6 +65,11 @@ type Model struct {
 	message string
 }
 
+// clipboardWriter se inyecta como var para que los tests puedan simular la
+// operación sin depender de xclip/xsel/wl-clipboard (que no existen en CI).
+// Producción usa atotto/clipboard.WriteAll directamente.
+var clipboardWriter = clipboard.WriteAll
+
 // New construye el modelo con datos ya cargados (tests y uso directo).
 func New(hw hardware.Info, results []eval.Result) Model {
 	sort.SliceStable(results, func(i, j int) bool {
@@ -219,7 +224,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				break
 			}
 			cmd := "ollama run " + m.view[m.cursor].Model.Name
-			if err := clipboard.WriteAll(cmd); err != nil {
+			if err := clipboardWriter(cmd); err != nil {
 				m.message = fmt.Sprintf(msgCopyFail, err)
 				break
 			}
