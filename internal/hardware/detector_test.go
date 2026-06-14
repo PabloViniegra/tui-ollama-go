@@ -48,8 +48,8 @@ func TestNvidiaDetectorHappyPath(t *testing.T) {
 	if g.VRAMGB != 12.0 {
 		t.Fatalf("VRAMGB = %v, want 12.0", g.VRAMGB)
 	}
-	if g.Kind != "nvidia" {
-		t.Fatalf("Kind = %q, want %q", g.Kind, "nvidia")
+	if g.Kind != GPUKindNVIDIA {
+		(t.Fatalf)("Kind = %q, want %q", g.Kind, GPUKindNVIDIA)
 	}
 }
 
@@ -124,8 +124,8 @@ func TestAmdLinuxDetectorHappyPath(t *testing.T) {
 	if g.VRAMGB != 8.0 {
 		t.Fatalf("VRAMGB = %v, want 8.0", g.VRAMGB)
 	}
-	if g.Kind != "amd" {
-		t.Fatalf("Kind = %q, want %q", g.Kind, "amd")
+	if g.Kind != GPUKindAMD {
+		(t.Fatalf)("Kind = %q, want %q", g.Kind, GPUKindAMD)
 	}
 }
 
@@ -169,8 +169,8 @@ func TestMacIntelDetectorHappyPath(t *testing.T) {
 	if g.VRAMGB != 1.5 {
 		t.Fatalf("VRAMGB = %v, want 1.5", g.VRAMGB)
 	}
-	if g.Kind != "intel" {
-		t.Fatalf("Kind = %q, want %q", g.Kind, "intel")
+	if g.Kind != GPUKindIntel {
+		(t.Fatalf)("Kind = %q, want %q", g.Kind, GPUKindIntel)
 	}
 }
 
@@ -184,8 +184,8 @@ func TestMacIntelDetectorAMDGPU(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected detection to succeed")
 	}
-	if g.Kind != "amd" {
-		t.Fatalf("Kind = %q, want %q", g.Kind, "amd")
+	if g.Kind != GPUKindAMD {
+		(t.Fatalf)("Kind = %q, want %q", g.Kind, GPUKindAMD)
 	}
 }
 
@@ -244,8 +244,8 @@ func TestWindowsDetectorHappyPath(t *testing.T) {
 	if g.VRAMGB != 6.0 {
 		t.Fatalf("VRAMGB = %v, want 6.0", g.VRAMGB)
 	}
-	if g.Kind != "nvidia" {
-		t.Fatalf("Kind = %q, want %q", g.Kind, "nvidia")
+	if g.Kind != GPUKindNVIDIA {
+		(t.Fatalf)("Kind = %q, want %q", g.Kind, GPUKindNVIDIA)
 	}
 }
 
@@ -259,8 +259,8 @@ func TestWindowsDetectorSingleObject(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected detection to succeed")
 	}
-	if g.Kind != "amd" {
-		t.Fatalf("Kind = %q, want %q", g.Kind, "amd")
+	if g.Kind != GPUKindAMD {
+		(t.Fatalf)("Kind = %q, want %q", g.Kind, GPUKindAMD)
 	}
 	if g.VRAMGB != 8.0 {
 		t.Fatalf("VRAMGB = %v, want 8.0", g.VRAMGB)
@@ -280,8 +280,8 @@ func TestWindowsDetectorUnknownVRAM(t *testing.T) {
 	if g.VRAMGB != 0 {
 		t.Fatalf("VRAMGB = %v, want 0", g.VRAMGB)
 	}
-	if g.Kind != "intel" {
-		t.Fatalf("Kind = %q, want %q", g.Kind, "intel")
+	if g.Kind != GPUKindIntel {
+		(t.Fatalf)("Kind = %q, want %q", g.Kind, GPUKindIntel)
 	}
 }
 
@@ -327,8 +327,8 @@ func TestDetectGPUWithFakeRunner(t *testing.T) {
 func TestDetectGPUNoGPU(t *testing.T) {
 	f := &fakeRunnerV2{}
 	g := detectGPU(f)
-	if g.Kind != "none" {
-		t.Fatalf("Kind = %q, want none", g.Kind)
+	if g.Kind != GPUKindNone {
+		(t.Fatalf)("Kind = %q, want %q", g.Kind, GPUKindNone)
 	}
 }
 

@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"ollama-fit/internal/eval"
+	"ollama-fit/internal/hardware"
 )
 
 func (m Model) View() string {
@@ -34,11 +35,11 @@ func (m Model) counts() (g, t, n int) {
 func (m Model) gpuDescr() string {
 	g := m.hw.GPU
 	switch {
-	case g.Kind == "apple":
+	case g.Kind == hardware.GPUKindApple:
 		return fmt.Sprintf("%s · memoria unificada (~%.0f GB usables por GPU)", g.Name, 0.70*m.hw.RAMGB)
 	case g.VRAMGB > 0:
-		return fmt.Sprintf("%s · %.1f GB VRAM (%s)", g.Name, g.VRAMGB, strings.ToUpper(g.Kind))
-	case g.Kind == "" || g.Kind == "none" || g.Name == "":
+		return fmt.Sprintf("%s · %.1f GB VRAM (%s)", g.Name, g.VRAMGB, strings.ToUpper(string(g.Kind)))
+	case g.Kind == "" || g.Kind == hardware.GPUKindNone || g.Name == "":
 		return "sin GPU dedicada · inferencia en CPU"
 	default:
 		return fmt.Sprintf("%s · VRAM desconocida", g.Name)

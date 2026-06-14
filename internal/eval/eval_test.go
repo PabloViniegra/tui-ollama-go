@@ -9,19 +9,19 @@ import (
 
 func TestGpuLabel(t *testing.T) {
 	tests := []struct {
-		kind string
+		kind hardware.GPUKind
 		want string
 	}{
-		{"nvidia", "CUDA"},
-		{"amd", "ROCm"},
-		{"apple", "Metal"},
-		{"intel", "iGPU"},
-		{"none", ""},
+		{hardware.GPUKindNVIDIA, "CUDA"},
+		{hardware.GPUKindAMD, "ROCm"},
+		{hardware.GPUKindApple, "Metal"},
+		{hardware.GPUKindIntel, "iGPU"},
+		{hardware.GPUKindNone, ""},
 		{"unknown", ""},
 		{"", ""},
 	}
 	for _, tc := range tests {
-		t.Run(tc.kind, func(t *testing.T) {
+		t.Run(string(tc.kind), func(t *testing.T) {
 			got := gpuLabel(tc.kind)
 			if got != tc.want {
 				t.Errorf("gpuLabel(%q) = %q, want %q", tc.kind, got, tc.want)
@@ -37,7 +37,7 @@ func model(name string, sizeGB float64) catalog.Model {
 func nvidia(vramGB float64) hardware.Info {
 	return hardware.Info{
 		RAMGB: 32,
-		GPU:   hardware.GPU{Name: "NVIDIA RTX 4070", VRAMGB: vramGB, Kind: "nvidia"},
+		GPU:   hardware.GPU{Name: "NVIDIA RTX 4070", VRAMGB: vramGB, Kind: hardware.GPUKindNVIDIA},
 	}
 }
 
@@ -49,7 +49,7 @@ func appleSilicon(ramGB float64) hardware.Info {
 	return hardware.Info{
 		RAMGB:        ramGB,
 		AppleUnified: true,
-		GPU:          hardware.GPU{Name: "M2 Pro", Kind: "apple"},
+		GPU:          hardware.GPU{Name: "M2 Pro", Kind: hardware.GPUKindApple},
 	}
 }
 

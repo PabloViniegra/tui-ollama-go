@@ -327,7 +327,7 @@ func TestGpuDescrApple(t *testing.T) {
 	hw := hardware.Info{
 		RAMGB:        24,
 		AppleUnified: true,
-		GPU:          hardware.GPU{Name: "M2 Pro", Kind: "apple"},
+		GPU:          hardware.GPU{Name: "M2 Pro", Kind: hardware.GPUKindApple},
 	}
 	m := New(hw, nil)
 	got := m.gpuDescr()
@@ -341,7 +341,7 @@ func TestGpuDescrApple(t *testing.T) {
 }
 
 func TestGpuDescrNVIDIA(t *testing.T) {
-	hw := hardware.Info{GPU: hardware.GPU{Name: "RTX 4070", VRAMGB: 12, Kind: "nvidia"}}
+	hw := hardware.Info{GPU: hardware.GPU{Name: "RTX 4070", VRAMGB: 12, Kind: hardware.GPUKindNVIDIA}}
 	m := New(hw, nil)
 	got := m.gpuDescr()
 	if !strings.Contains(got, "RTX 4070") {
@@ -356,7 +356,7 @@ func TestGpuDescrNVIDIA(t *testing.T) {
 }
 
 func TestGpuDescrNoGPU(t *testing.T) {
-	hw := hardware.Info{GPU: hardware.GPU{Kind: "none"}}
+	hw := hardware.Info{GPU: hardware.GPU{Kind: hardware.GPUKindNone}}
 	m := New(hw, nil)
 	got := m.gpuDescr()
 	if !strings.Contains(got, "sin GPU") {
@@ -365,7 +365,7 @@ func TestGpuDescrNoGPU(t *testing.T) {
 }
 
 func TestGpuDescrUnknownVRAM(t *testing.T) {
-	hw := hardware.Info{GPU: hardware.GPU{Name: "Intel HD 630", Kind: "intel", VRAMGB: 0}}
+	hw := hardware.Info{GPU: hardware.GPU{Name: "Intel HD 630", Kind: hardware.GPUKindIntel, VRAMGB: 0}}
 	m := New(hw, nil)
 	got := m.gpuDescr()
 	if !strings.Contains(got, "VRAM desconocida") {

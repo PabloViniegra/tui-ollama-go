@@ -80,15 +80,15 @@ func Evaluate(h hardware.Info, m catalog.Model) Result {
 	return r
 }
 
-func gpuLabel(kind string) string {
+func gpuLabel(kind hardware.GPUKind) string {
 	switch kind {
-	case "nvidia":
+	case hardware.GPUKindNVIDIA:
 		return "CUDA"
-	case "amd":
+	case hardware.GPUKindAMD:
 		return "ROCm"
-	case "apple":
+	case hardware.GPUKindApple:
 		return "Metal"
-	case "intel":
+	case hardware.GPUKindIntel:
 		return "iGPU"
 	}
 	return ""

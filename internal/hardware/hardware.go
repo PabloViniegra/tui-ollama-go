@@ -16,11 +16,22 @@ import (
 	"github.com/shirou/gopsutil/v3/mem"
 )
 
+// GPUKind es un tipo de cadena tipada para los tipos de GPU.
+type GPUKind string
+
+const (
+	GPUKindNone  GPUKind = "none"
+	GPUKindNVIDIA GPUKind = "nvidia"
+	GPUKindAMD    GPUKind = "amd"
+	GPUKindApple  GPUKind = "apple"
+	GPUKindIntel  GPUKind = "intel"
+)
+
 // GPU describe el acelerador detectado.
 type GPU struct {
 	Name   string  // nombre comercial (ej. "NVIDIA GeForce RTX 4070")
 	VRAMGB float64 // VRAM dedicada en GB; 0 si es desconocida o no hay GPU
-	Kind   string  // nvidia | amd | apple | intel | none
+	Kind   GPUKind // nvidia | amd | apple | intel | none
 }
 
 // Info agrupa toda la información del equipo.
@@ -81,8 +92,8 @@ func Detect(ctx context.Context) Info {
 
 	if info.OS == "darwin" && info.Arch == "arm64" {
 		info.AppleUnified = true
-		if info.GPU.Kind == "" || info.GPU.Kind == "none" {
-			info.GPU = GPU{Name: appleChip(runner), Kind: "apple"}
+		if info.GPU.Kind == "" || info.GPU.Kind == GPUKindNone {
+			info.GPU = GPU{Name: appleChip(runner), Kind: GPUKindApple}
 		}
 	}
 	return info
@@ -154,7 +165,7 @@ func detectGPU(runner CommandRunner) GPU {
 			return g
 		}
 	}
-	return GPU{Kind: "none"}
+	return GPU{Kind: GPUKindNone}
 }
 
 func (nvidiaDetector) Detect(runner CommandRunner) (GPU, bool) {
@@ -178,7 +189,7 @@ func (nvidiaDetector) Detect(runner CommandRunner) (GPU, bool) {
 		if err != nil {
 			continue
 		}
-		return GPU{Name: name, VRAMGB: mib / 1024.0, Kind: "nvidia"}, true
+		return GPU{Name: name, VRAMGB: mib / 1024.0, Kind: GPUKindNVIDIA}, true
 	}
 	return GPU{}, false
 }
@@ -186,7 +197,7 @@ func (nvidiaDetector) Detect(runner CommandRunner) (GPU, bool) {
 func (macIntelDetector) Detect(runner CommandRunner) (GPU, bool) {
 	out, err := runner.Run(context.Background(), "system_profiler", "-json", "SPDisplaysDataType")
 	if err != nil {
-		return GPU{Kind: "none"}, false
+		return GPU{Kind: GPUKindNone}, false
 	}
 	var data struct {
 		Displays []struct {
@@ -196,17 +207,17 @@ func (macIntelDetector) Detect(runner CommandRunner) (GPU, bool) {
 		} `json:"SPDisplaysDataType"`
 	}
 	if json.Unmarshal([]byte(out), &data) != nil || len(data.Displays) == 0 {
-		return GPU{Kind: "none"}, false
+		return GPU{Kind: GPUKindNone}, false
 	}
 	d := data.Displays[0]
 	v := parseAppleVRAM(d.VRAM)
 	if v == 0 {
 		v = parseAppleVRAM(d.VRAMShared)
 	}
-	kind := "intel"
+	kind := GPUKindIntel
 	low := strings.ToLower(d.Name)
 	if strings.Contains(low, "amd") || strings.Contains(low, "radeon") {
-		kind = "amd"
+		kind = GPUKindAMD
 	}
 	return GPU{Name: d.Name, VRAMGB: v, Kind: kind}, true
 }
@@ -240,7 +251,7 @@ func (amdLinuxDetector) Detect(runner CommandRunner) (GPU, bool) {
 		for k, v := range dev {
 			if strings.Contains(strings.ToLower(k), "vram total memory") {
 				if b, err := strconv.ParseFloat(strings.TrimSpace(v), 64); err == nil {
-					return GPU{Name: "AMD GPU (ROCm)", VRAMGB: b / (1024 * 1024 * 1024), Kind: "amd"}, true
+					return GPU{Name: "AMD GPU (ROCm)", VRAMGB: b / (1024 * 1024 * 1024), Kind: GPUKindAMD}, true
 				}
 			}
 		}
@@ -266,12 +277,12 @@ func (windowsDetector) Detect(runner CommandRunner) (GPU, bool) {
 		return GPU{}, false
 	}
 	low := strings.ToLower(one.Name)
-	kind := "intel"
+	kind := GPUKindIntel
 	switch {
 	case strings.Contains(low, "nvidia"):
-		kind = "nvidia"
+		kind = GPUKindNVIDIA
 	case strings.Contains(low, "amd"), strings.Contains(low, "radeon"):
-		kind = "amd"
+		kind = GPUKindAMD
 	}
 	// OJO: AdapterRAM es uint32 en WMI y satura en ~4 GB; puede quedar corto
 	// en GPUs grandes. Por eso nvidia-smi se intenta antes.
