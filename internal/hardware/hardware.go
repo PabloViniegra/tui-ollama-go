@@ -34,6 +34,34 @@ type Info struct {
 	AppleUnified bool // true en Apple Silicon (memoria unificada CPU/GPU)
 }
 
+// CommandRunner abstracts os/exec so detectors can be tested without real GPUs.
+type CommandRunner interface {
+	Run(ctx context.Context, name string, args ...string) (string, error)
+}
+
+// execRunner is the production adapter. It keeps the existing 4 s timeout and
+// returns an empty stdout on error.
+type execRunner struct{}
+
+func (execRunner) Run(ctx context.Context, name string, args ...string) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, 4*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, name, args...).Output()
+	if err != nil {
+		return "", err
+	}
+	return string(out), nil
+}
+
+// runWithRunner is a small helper for non-GPU callers that still need a command.
+func runWithRunner(runner CommandRunner, name string, args ...string) (string, bool) {
+	out, err := runner.Run(context.Background(), name, args...)
+	if err != nil {
+		return "", false
+	}
+	return out, true
+}
+
 // Detect inspecciona el equipo actual y devuelve su Info.
 func Detect() Info {
 	info := Info{OS: runtime.GOOS, Arch: runtime.GOARCH}
@@ -43,12 +71,14 @@ func Detect() Info {
 	}
 	info.CPUCores = logicalCores()
 	info.CPUModel = cpuModel()
-	info.GPU = detectGPU()
+
+	runner := execRunner{}
+	info.GPU = detectGPU(runner)
 
 	if info.OS == "darwin" && info.Arch == "arm64" {
 		info.AppleUnified = true
 		if info.GPU.Kind == "" || info.GPU.Kind == "none" {
-			info.GPU = GPU{Name: appleChip(), Kind: "apple"}
+			info.GPU = GPU{Name: appleChip(runner), Kind: "apple"}
 		}
 	}
 	return info
@@ -75,59 +105,58 @@ func cpuModel() string {
 	return "CPU desconocida"
 }
 
-// run ejecuta un comando con timeout y devuelve su stdout.
-func run(name string, args ...string) (string, bool) {
-	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
-	defer cancel()
-	out, err := exec.CommandContext(ctx, name, args...).Output()
-	if err != nil {
-		return "", false
-	}
-	return string(out), true
-}
-
 func sysctl(key string) string {
-	if out, ok := run("sysctl", "-n", key); ok {
+	if out, ok := runWithRunner(execRunner{}, "sysctl", "-n", key); ok {
 		return strings.TrimSpace(out)
 	}
 	return ""
 }
 
-func appleChip() string {
-	if s := sysctl("machdep.cpu.brand_string"); s != "" {
-		return s
+func appleChip(runner CommandRunner) string {
+	if out, ok := runWithRunner(runner, "sysctl", "-n", "machdep.cpu.brand_string"); ok {
+		return strings.TrimSpace(out)
 	}
 	return "Apple Silicon"
 }
 
+// Detector abstracts a single GPU-discovery strategy.
+type Detector interface {
+	Detect(runner CommandRunner) (GPU, bool)
+}
+
+type nvidiaDetector struct{}
+type amdLinuxDetector struct{}
+type macIntelDetector struct{}
+type windowsDetector struct{}
+
+var detectorChain = []struct {
+	name  string
+	match func() bool
+	det   Detector
+}{
+	{"nvidia", func() bool { return true }, nvidiaDetector{}},
+	{"amd-linux", func() bool { return runtime.GOOS == "linux" }, amdLinuxDetector{}},
+	{"mac-intel", func() bool { return runtime.GOOS == "darwin" && runtime.GOARCH != "arm64" }, macIntelDetector{}},
+	{"windows", func() bool { return runtime.GOOS == "windows" }, windowsDetector{}},
+}
+
 // detectGPU prueba detectores en orden de fiabilidad y cae a CPU si nada responde.
-func detectGPU() GPU {
-	// nvidia-smi funciona en Linux y Windows (y eGPU). Es lo más fiable.
-	if g, ok := detectNVIDIA(); ok {
-		return g
-	}
-	switch runtime.GOOS {
-	case "darwin":
-		if runtime.GOARCH == "arm64" {
-			return GPU{Name: appleChip(), Kind: "apple"}
+func detectGPU(runner CommandRunner) GPU {
+	for _, d := range detectorChain {
+		if !d.match() {
+			continue
 		}
-		return detectMacIntelGPU()
-	case "linux":
-		if g, ok := detectAMDLinux(); ok {
-			return g
-		}
-	case "windows":
-		if g, ok := detectWindowsGPU(); ok {
+		if g, ok := d.det.Detect(runner); ok {
 			return g
 		}
 	}
 	return GPU{Kind: "none"}
 }
 
-func detectNVIDIA() (GPU, bool) {
-	out, ok := run("nvidia-smi",
+func (nvidiaDetector) Detect(runner CommandRunner) (GPU, bool) {
+	out, err := runner.Run(context.Background(), "nvidia-smi",
 		"--query-gpu=name,memory.total", "--format=csv,noheader,nounits")
-	if !ok {
+	if err != nil {
 		return GPU{}, false
 	}
 	sc := bufio.NewScanner(strings.NewReader(out))
@@ -150,10 +179,10 @@ func detectNVIDIA() (GPU, bool) {
 	return GPU{}, false
 }
 
-func detectMacIntelGPU() GPU {
-	out, ok := run("system_profiler", "-json", "SPDisplaysDataType")
-	if !ok {
-		return GPU{Kind: "none"}
+func (macIntelDetector) Detect(runner CommandRunner) (GPU, bool) {
+	out, err := runner.Run(context.Background(), "system_profiler", "-json", "SPDisplaysDataType")
+	if err != nil {
+		return GPU{Kind: "none"}, false
 	}
 	var data struct {
 		Displays []struct {
@@ -163,7 +192,7 @@ func detectMacIntelGPU() GPU {
 		} `json:"SPDisplaysDataType"`
 	}
 	if json.Unmarshal([]byte(out), &data) != nil || len(data.Displays) == 0 {
-		return GPU{Kind: "none"}
+		return GPU{Kind: "none"}, false
 	}
 	d := data.Displays[0]
 	v := parseAppleVRAM(d.VRAM)
@@ -175,7 +204,7 @@ func detectMacIntelGPU() GPU {
 	if strings.Contains(low, "amd") || strings.Contains(low, "radeon") {
 		kind = "amd"
 	}
-	return GPU{Name: d.Name, VRAMGB: v, Kind: kind}
+	return GPU{Name: d.Name, VRAMGB: v, Kind: kind}, true
 }
 
 // parseAppleVRAM admite formatos tipo "1536 MB" o "8 GB".
@@ -194,9 +223,9 @@ func parseAppleVRAM(s string) float64 {
 	return val // se asume GB
 }
 
-func detectAMDLinux() (GPU, bool) {
-	out, ok := run("rocm-smi", "--showmeminfo", "vram", "--json")
-	if !ok {
+func (amdLinuxDetector) Detect(runner CommandRunner) (GPU, bool) {
+	out, err := runner.Run(context.Background(), "rocm-smi", "--showmeminfo", "vram", "--json")
+	if err != nil {
 		return GPU{}, false
 	}
 	var devices map[string]map[string]string
@@ -215,10 +244,10 @@ func detectAMDLinux() (GPU, bool) {
 	return GPU{}, false
 }
 
-func detectWindowsGPU() (GPU, bool) {
+func (windowsDetector) Detect(runner CommandRunner) (GPU, bool) {
 	ps := `Get-CimInstance Win32_VideoController | Select-Object Name,AdapterRAM | ConvertTo-Json`
-	out, ok := run("powershell", "-NoProfile", "-Command", ps)
-	if !ok {
+	out, err := runner.Run(context.Background(), "powershell", "-NoProfile", "-Command", ps)
+	if err != nil {
 		return GPU{}, false
 	}
 	type vc struct {
