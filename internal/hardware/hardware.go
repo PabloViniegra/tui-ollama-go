@@ -71,8 +71,8 @@ func (execRunner) Run(ctx context.Context, name string, args ...string) (string,
 }
 
 // runWithRunner is a small helper for non-GPU callers that still need a command.
-func runWithRunner(runner CommandRunner, name string, args ...string) (string, bool) {
-	out, err := runner.Run(context.Background(), name, args...)
+func runWithRunner(ctx context.Context, runner CommandRunner, name string, args ...string) (string, bool) {
+	out, err := runner.Run(ctx, name, args...)
 	if err != nil {
 		return "", false
 	}
@@ -87,7 +87,7 @@ func Detect(ctx context.Context) Info {
 		info.RAMGB = bytesToGB(vm.Total)
 	}
 	info.CPUCores = logicalCores()
-	info.CPUModel = cpuModel()
+	info.CPUModel = cpuModel(ctx)
 
 	if ctx.Err() != nil {
 		return info
@@ -99,7 +99,7 @@ func Detect(ctx context.Context) Info {
 	if info.OS == "darwin" && info.Arch == "arm64" {
 		info.AppleUnified = true
 		if info.GPU.Kind == "" || info.GPU.Kind == GPUKindNone {
-			info.GPU = GPU{Name: appleChip(runner), Kind: GPUKindApple}
+			info.GPU = GPU{Name: appleChip(ctx, runner), Kind: GPUKindApple}
 		}
 	}
 	return info
@@ -114,9 +114,9 @@ func logicalCores() int {
 	return runtime.NumCPU()
 }
 
-func cpuModel() string {
+func cpuModel(ctx context.Context) string {
 	if runtime.GOOS == "darwin" && runtime.GOARCH == "arm64" {
-		if s := sysctl("machdep.cpu.brand_string"); s != "" {
+		if s := sysctl(ctx, "machdep.cpu.brand_string"); s != "" {
 			return s
 		}
 	}
@@ -126,15 +126,15 @@ func cpuModel() string {
 	return "CPU desconocida"
 }
 
-func sysctl(key string) string {
-	if out, ok := runWithRunner(execRunner{}, "sysctl", "-n", key); ok {
+func sysctl(ctx context.Context, key string) string {
+	if out, ok := runWithRunner(ctx, execRunner{}, "sysctl", "-n", key); ok {
 		return strings.TrimSpace(out)
 	}
 	return ""
 }
 
-func appleChip(runner CommandRunner) string {
-	if out, ok := runWithRunner(runner, "sysctl", "-n", "machdep.cpu.brand_string"); ok {
+func appleChip(ctx context.Context, runner CommandRunner) string {
+	if out, ok := runWithRunner(ctx, runner, "sysctl", "-n", "machdep.cpu.brand_string"); ok {
 		return strings.TrimSpace(out)
 	}
 	return "Apple Silicon"

@@ -337,7 +337,7 @@ func TestAppleChipWithFakeRunner(t *testing.T) {
 			cmdKey("sysctl", "-n", "machdep.cpu.brand_string"): "Apple M1 Pro",
 		},
 	}
-	name := appleChip(f)
+	name := appleChip(context.Background(), f)
 	if name != "Apple M1 Pro" {
 		t.Fatalf("appleChip = %q, want Apple M1 Pro", name)
 	}
@@ -345,7 +345,7 @@ func TestAppleChipWithFakeRunner(t *testing.T) {
 
 func TestAppleChipFallback(t *testing.T) {
 	f := &fakeRunnerV2{}
-	name := appleChip(f)
+	name := appleChip(context.Background(), f)
 	if name != "Apple Silicon" {
 		t.Fatalf("appleChip = %q, want Apple Silicon", name)
 	}
@@ -357,7 +357,7 @@ func TestRunWithRunner(t *testing.T) {
 			cmdKey("echo", "hello"): "hello",
 		},
 	}
-	out, ok := runWithRunner(f, "echo", "hello")
+	out, ok := runWithRunner(context.Background(), f, "echo", "hello")
 	if !ok {
 		t.Fatalf("expected runWithRunner to succeed")
 	}
@@ -372,7 +372,7 @@ func TestRunWithRunnerError(t *testing.T) {
 			cmdKey("false"): errors.New("exit status 1"),
 		},
 	}
-	_, ok := runWithRunner(f, "false")
+	_, ok := runWithRunner(context.Background(), f, "false")
 	if ok {
 		t.Fatalf("expected runWithRunner to fail")
 	}
