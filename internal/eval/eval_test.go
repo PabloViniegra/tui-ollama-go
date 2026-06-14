@@ -186,3 +186,9 @@ func TestEvaluateModelPreserved(t *testing.T) {
 		t.Errorf("Model.Name = %q, want %q", r.Model.Name, "llama3.1:8b")
 	}
 }
+
+func TestAppleGPUFractionExported(t *testing.T) {
+	if AppleGPUFraction != 0.70 {
+		t.Errorf("AppleGPUFraction = %v, want 0.70", AppleGPUFraction)
+	}
+}
