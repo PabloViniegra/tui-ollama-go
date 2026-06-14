@@ -1,6 +1,11 @@
 package hardware
 
-import "testing"
+import (
+	"context"
+	"errors"
+	"os/exec"
+	"testing"
+)
 
 func TestBytesToGB(t *testing.T) {
 	tests := []struct {
@@ -41,6 +46,17 @@ func TestGPUKindString(t *testing.T) {
 				t.Errorf("%q.String() = %q, want %q", tc.kind, got, tc.want)
 			}
 		})
+	}
+}
+
+func TestExecRunnerWrapsExecError(t *testing.T) {
+	r := execRunner{}
+	_, err := r.Run(context.Background(), "this_command_definitely_does_not_exist_12345")
+	if err == nil {
+		t.Fatalf("expected error for missing command, got nil")
+	}
+	if !errors.Is(err, exec.ErrNotFound) {
+		t.Errorf("expected errors.Is(err, exec.ErrNotFound) = true; got wrapped error: %v", err)
 	}
 }
 

@@ -442,6 +442,22 @@ func TestGetDocHTTPError(t *testing.T) {
 	}
 }
 
+func TestGetDocWrapsHTTPError(t *testing.T) {
+	sentinel := errors.New("sentinel HTTP error")
+	f := &fakeDoer{
+		err: map[string]error{
+			libraryURL: sentinel,
+		},
+	}
+	_, err := getDoc(context.Background(), f, libraryURL)
+	if err == nil {
+		t.Fatalf("expected error, got nil")
+	}
+	if !errors.Is(err, sentinel) {
+		t.Errorf("expected errors.Is(err, sentinel) = true; got wrapped error: %v", err)
+	}
+}
+
 func TestGetDocNon200(t *testing.T) {
 	f := &fakeDoer{
 		resp: map[string]*http.Response{
