@@ -56,8 +56,7 @@ func TestNvidiaDetectorHappyPath(t *testing.T) {
 func TestNvidiaDetectorMultiLine(t *testing.T) {
 	f := &fakeRunnerV2{
 		output: map[string]string{
-			cmdKey("nvidia-smi", "--query-gpu=name,memory.total", "--format=csv,noheader,nounits"):
-				"NVIDIA GeForce RTX 4090, 24576\nNVIDIA GeForce RTX 4070, 12288",
+			cmdKey("nvidia-smi", "--query-gpu=name,memory.total", "--format=csv,noheader,nounits"): "NVIDIA GeForce RTX 4090, 24576\nNVIDIA GeForce RTX 4070, 12288",
 		},
 	}
 	g, ok := nvidiaDetector{}.Detect(f)

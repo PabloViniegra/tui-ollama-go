@@ -21,7 +21,7 @@ import (
 type GPUKind string
 
 const (
-	GPUKindNone  GPUKind = "none"
+	GPUKindNone   GPUKind = "none"
 	GPUKindNVIDIA GPUKind = "nvidia"
 	GPUKindAMD    GPUKind = "amd"
 	GPUKindApple  GPUKind = "apple"
