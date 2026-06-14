@@ -103,6 +103,22 @@ go run . --offline   # no toca la red; usa el catálogo embebido
 > además `…/library/<modelo>/tags`; está fuera del alcance actual para mantener
 > el scrape ligero.
 
+### Veredicto one-shot (sin TUI)
+
+Para chequear un modelo sin abrir la interfaz, está el subcomando `fit`:
+
+```bash
+ollama-fit fit qwen2.5:7b
+```
+
+Imprime veredicto, backend, motivo y memoria necesaria vs. disponible. Códigos
+de salida: `0` Good, `1` Tight, `2` No, `3` Error. Útil para scripting tipo
+`ollama-fit fit X && ollama run X`.
+
+Para que funcione "global" desde cualquier directorio, instalá el binario con
+`make install` (que ejecuta `go install .`) y asegurate de que `$GOPATH/bin`
+(o `$HOME/go/bin`) esté en tu `PATH`.
+
 ### Ideas para iterar
 
 - Leer también `…/tags` para todas las cuantizaciones (q4_K_M, q8_0, fp16…).

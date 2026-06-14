@@ -1,4 +1,4 @@
-.PHONY: build run test coverage lint clean tidy
+.PHONY: build run test coverage lint clean tidy install
 
 build:
 	go build -o ollama-fit .
@@ -22,3 +22,6 @@ clean:
 
 tidy:
 	go mod tidy
+
+install:
+	go install .
