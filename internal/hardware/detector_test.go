@@ -377,3 +377,30 @@ func TestRunWithRunnerError(t *testing.T) {
 		t.Fatalf("expected runWithRunner to fail")
 	}
 }
+
+// recordingRunner records the context passed to Run.
+type recordingRunner struct {
+	ctx context.Context
+}
+
+func (r *recordingRunner) Run(ctx context.Context, name string, args ...string) (string, error) {
+	r.ctx = ctx
+	return "", errors.New("not found")
+}
+
+func TestDetect_PropagatesCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	runner := &recordingRunner{}
+	g := detectGPU(ctx, runner)
+	if g.Kind != GPUKindNone {
+		t.Fatalf("expected no GPU with cancelled context, got %v", g)
+	}
+	if runner.ctx == nil {
+		t.Fatalf("expected runner.Run to be called, but it wasn't")
+	}
+	if runner.ctx.Err() == nil {
+		t.Fatalf("expected runner.Run to receive a cancelled context")
+	}
+}
