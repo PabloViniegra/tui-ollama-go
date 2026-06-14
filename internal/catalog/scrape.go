@@ -45,7 +45,10 @@ type HTTPDoer interface {
 // Fetch devuelve el catálogo. Por defecto: caché fresca -> red (scrape) -> caché
 // vieja -> catálogo embebido. Con offline usa directamente el embebido; con
 // refresh ignora la caché. progress recibe mensajes de avance (puede ser nil).
-func Fetch(refresh, offline bool, progress func(string)) ([]Model, error) {
+func Fetch(ctx context.Context, refresh, offline bool, progress func(string)) ([]Model, error) {
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
 	if progress == nil {
 		progress = func(string) {}
 	}
@@ -63,11 +66,11 @@ func Fetch(refresh, offline bool, progress func(string)) ([]Model, error) {
 		}
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	scrapeCtx, cancel := context.WithTimeout(ctx, 120*time.Second)
 	defer cancel()
 
 	client := &http.Client{Timeout: 25 * time.Second}
-	models, err := scrapeAll(ctx, client, progress)
+	models, err := scrapeAll(scrapeCtx, client, progress)
 	if err != nil || len(models) == 0 {
 		if cf, ok := loadCache(path); ok && len(cf.Models) > 0 {
 			progress("Scrape falló; uso caché previa.")

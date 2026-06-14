@@ -63,7 +63,7 @@ func runWithRunner(runner CommandRunner, name string, args ...string) (string, b
 }
 
 // Detect inspecciona el equipo actual y devuelve su Info.
-func Detect() Info {
+func Detect(ctx context.Context) Info {
 	info := Info{OS: runtime.GOOS, Arch: runtime.GOARCH}
 
 	if vm, err := mem.VirtualMemory(); err == nil && vm != nil {
@@ -71,6 +71,10 @@ func Detect() Info {
 	}
 	info.CPUCores = logicalCores()
 	info.CPUModel = cpuModel()
+
+	if ctx.Err() != nil {
+		return info
+	}
 
 	runner := execRunner{}
 	info.GPU = detectGPU(runner)

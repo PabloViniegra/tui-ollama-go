@@ -110,7 +110,7 @@ func TestHumanAge(t *testing.T) {
 }
 
 func TestFetchOffline(t *testing.T) {
-	models, err := Fetch(false, true, nil)
+	models, err := Fetch(context.Background(), false, true, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -122,7 +122,7 @@ func TestFetchOffline(t *testing.T) {
 
 func TestFetchOfflineWithProgress(t *testing.T) {
 	var msgs []string
-	_, err := Fetch(false, true, func(s string) { msgs = append(msgs, s) })
+	_, err := Fetch(context.Background(), false, true, func(s string) { msgs = append(msgs, s) })
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -135,7 +135,7 @@ func TestFetchCacheMissFallsBackToEmbedded(t *testing.T) {
 	// With refresh=true the cache is ignored; if network is unavailable
 	// and there is no cache, it falls back to embedded models.
 	// We test the offline=true path separately, so this is a smoke test.
-	models, err := Fetch(true, true, nil)
+	models, err := Fetch(context.Background(), true, true, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

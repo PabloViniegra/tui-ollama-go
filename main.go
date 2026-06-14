@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
@@ -19,9 +20,9 @@ func main() {
 	flag.Parse()
 
 	fmt.Fprintln(os.Stderr, "Detectando hardware…")
-	hw := hardware.Detect()
+	hw := hardware.Detect(context.Background())
 
-	models, err := catalog.Fetch(*refresh, *offline, func(s string) {
+	models, err := catalog.Fetch(context.Background(), *refresh, *offline, func(s string) {
 		fmt.Fprintln(os.Stderr, s)
 	})
 	if err != nil {

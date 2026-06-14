@@ -106,5 +106,5 @@ func TestNvidiaDetectorErrorPropagation(t *testing.T) {
 
 func TestDetectDoesNotPanic(t *testing.T) {
 	// Smoke test: Detect() must not panic on any GOOS.
-	_ = Detect()
+	_ = Detect(context.Background())
 }
