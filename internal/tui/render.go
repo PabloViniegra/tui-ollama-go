@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 
 	"ollama-fit/internal/eval"
 	"ollama-fit/internal/hardware"
@@ -72,7 +73,20 @@ func (m Model) header() string {
 	return line1 + "\n" + cpuLine + "\n" + gpuLine + "\n" + m.columnHeader()
 }
 
-func cell(s string, w int) string { return lipgloss.NewStyle().Width(w).Render(s) }
+// cell trunca visualmente s a w columnas (con elipsis) y luego paddea hasta w.
+// Garantiza que la celda tenga exactamente w columnas visibles — sin esto, un
+// nombre de modelo largo o un arrow "X.X GB → Y.Y GB" ancho hace crecer la
+// celda, la fila se pasa de m.width y MaxWidth la envuelve a 2+ líneas,
+// rompiendo el alineamiento de columnas y desbordando la View.
+func cell(s string, w int) string {
+	if w <= 0 {
+		return ""
+	}
+	if ansi.StringWidth(s) > w {
+		s = ansi.Truncate(s, w, "…")
+	}
+	return lipgloss.NewStyle().Width(w).Render(s)
+}
 
 func (m Model) columnHeader() string {
 	body := gutterGlyph(cDim, false) + " " +
@@ -148,7 +162,6 @@ func (m Model) renderRow(r eval.Result, selected bool) string {
 		cell(dimStyle.Render(r.Model.Quant), wQuant) +
 		cell(arrow, wMemory) +
 		cell(dimStyle.Render(r.Backend), wBackend)
-	row = lipgloss.NewStyle().MaxWidth(m.width).Render(row)
 	return applySelectionStyle(row, selected)
 }
 
@@ -171,6 +184,9 @@ func (m Model) listView(height int) string {
 func (m Model) footer() string {
 	if m.searching {
 		return footStyle.Render(fmt.Sprintf(msgSearchPrompt, m.search))
+	}
+	if m.message != "" {
+		return footStyle.Render(m.message)
 	}
 	return footStyle.Render(fmt.Sprintf(msgFooterHelp, m.filter.label()))
 }

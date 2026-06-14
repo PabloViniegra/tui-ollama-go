@@ -2,10 +2,12 @@
 package tui
 
 import (
+	"fmt"
 	"sort"
 	"strings"
 	"time"
 
+	"github.com/atotto/clipboard"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
@@ -58,6 +60,9 @@ type Model struct {
 	spinnerTick int
 	loading     bool
 	loadFn      func() (hardware.Info, []eval.Result, error)
+	// message se muestra en el footer en lugar del help. Se limpia con la
+	// próxima tecla (ver Update). Se usa para confirmar acciones como Enter.
+	message string
 }
 
 // New construye el modelo con datos ya cargados (tests y uso directo).
@@ -177,6 +182,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.searching {
 			return m.updateSearch(msg)
 		}
+		m.message = "" // cualquier tecla nueva limpia el mensaje anterior
 		switch msg.String() {
 		case "q", "ctrl+c", "esc":
 			return m, tea.Quit
@@ -208,6 +214,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.applyFilter()
 		case "/":
 			m.searching = true
+		case "enter":
+			if len(m.view) == 0 {
+				break
+			}
+			cmd := "ollama run " + m.view[m.cursor].Model.Name
+			if err := clipboard.WriteAll(cmd); err != nil {
+				m.message = fmt.Sprintf(msgCopyFail, err)
+				break
+			}
+			m.message = fmt.Sprintf(msgCopiedOK, cmd)
 		}
 		if m.cursor < 0 {
 			m.cursor = 0

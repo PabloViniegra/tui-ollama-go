@@ -39,10 +39,10 @@ var (
 
 const (
 	wStatus  = 9
-	wName    = 24
+	wName    = 22
 	wParams  = 7
 	wQuant   = 10
-	wMemory  = 17
-	wBackend = 12
+	wMemory  = 20
+	wBackend = 10
 )
 

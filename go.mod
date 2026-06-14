@@ -4,8 +4,10 @@ go 1.23
 
 require (
 	github.com/PuerkitoBio/goquery v1.10.0
+	github.com/atotto/clipboard v0.1.4
 	github.com/charmbracelet/bubbletea v1.2.4
 	github.com/charmbracelet/lipgloss v1.0.0
+	github.com/charmbracelet/x/ansi v0.4.5
 	github.com/muesli/termenv v0.15.2
 	github.com/shirou/gopsutil/v3 v3.24.5
 )
@@ -13,7 +15,6 @@ require (
 require (
 	github.com/andybalholm/cascadia v1.3.2 // indirect
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
-	github.com/charmbracelet/x/ansi v0.4.5 // indirect
 	github.com/charmbracelet/x/term v0.2.1 // indirect
 	github.com/erikgeiser/coninput v0.0.0-20211004153227-1c3628e74d0f // indirect
 	github.com/go-ole/go-ole v1.2.6 // indirect

@@ -910,3 +910,131 @@ func TestViewNoWrapWhileScrolling(t *testing.T) {
 		m = m2.(Model)
 	}
 }
+
+// TestViewRowAlignmentWithLongName es la regresión para bugs 1+2: un nombre
+// de modelo que excede wName ya no envuelve la fila, no rompe el alineamiento
+// de columnas y no desborda la View.
+func TestViewRowAlignmentWithLongName(t *testing.T) {
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	results := []eval.Result{
+		{Model: catalog.Model{Name: "short:7b", SizeGB: 4, Params: "7B", Quant: "Q4_K_M"}, Verdict: eval.Good, Backend: "CPU", NeedGB: 4.5},
+		{Model: catalog.Model{Name: "this-is-a-very-long-model-name-that-might-overflow:70b", SizeGB: 40, Params: "70B", Quant: "Q4_K_M"}, Verdict: eval.No, Backend: "CPU", NeedGB: 45},
+		{Model: catalog.Model{Name: "another:7b", SizeGB: 4, Params: "7B", Quant: "Q4_K_M"}, Verdict: eval.Good, Backend: "CPU", NeedGB: 4.5},
+	}
+	m := newWithSize(hwNone(), results, 80, 30)
+	if got := lipgloss.Height(m.View()); got != 30 {
+		t.Errorf("View height = %d, want 30 (footer/header would be cut off)", got)
+	}
+	for i, line := range strings.Split(m.View(), "\n") {
+		if lw := lipgloss.Width(line); lw > 80 {
+			t.Errorf("line %d visual width %d > 80: %q", i, lw, line)
+		}
+	}
+	// La fila del nombre largo debe ser exactamente 1 línea, no 2 ni 3.
+	// (results se ordena por SizeGB asc, así que el de 40 GB queda al final.)
+	var longRow string
+	for _, r := range m.view {
+		if len(r.Model.Name) > 30 {
+			longRow = m.renderRow(r, false)
+			break
+		}
+	}
+	if longRow == "" {
+		t.Fatal("no se encontró la fila con nombre largo en m.view")
+	}
+	if lines := strings.Count(longRow, "\n") + 1; lines != 1 {
+		t.Errorf("long-name row rendered as %d lines, want 1: %q", lines, longRow)
+	}
+	// El nombre debe aparecer truncado con elipsis.
+	if !strings.Contains(longRow, "…") {
+		t.Errorf("long-name row should contain truncation ellipsis, got %q", longRow)
+	}
+	// Mientras scrolleo, los invariantes se mantienen.
+	for step := 0; step < 3; step++ {
+		nm, _ := m.Update(key("j"))
+		m = nm.(Model)
+		for i, line := range strings.Split(m.View(), "\n") {
+			if lw := lipgloss.Width(line); lw > 80 {
+				t.Errorf("step %d, line %d: visual width %d > 80", step, i, lw)
+			}
+		}
+		if got := lipgloss.Height(m.View()); got != 30 {
+			t.Errorf("step %d: View height = %d, want 30", step, got)
+		}
+	}
+}
+
+// TestUpdateEnterOnModelSetsMessage es la regresión para bug 3: Enter sobre
+// un modelo debe poblar m.message con la confirmación. No afirmamos el
+// contenido del portapapeles del sistema (puede no estar disponible en CI).
+func TestUpdateEnterOnModelSetsMessage(t *testing.T) {
+	m := newWithSize(hwNone(), []eval.Result{
+		{Model: catalog.Model{Name: "llama3.1:8b", SizeGB: 4.9, Params: "8B", Quant: "Q4_K_M"}, Verdict: eval.Good, Backend: "CPU", NeedGB: 5.5},
+	}, 120, 40)
+	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m2 := nm.(Model)
+	if m2.message == "" {
+		t.Error("expected m.message set after Enter, got empty")
+	}
+	if !strings.Contains(m2.message, "llama3.1:8b") {
+		t.Errorf("m.message should contain model name, got %q", m2.message)
+	}
+	if !strings.Contains(m2.message, "ollama run") {
+		t.Errorf("m.message should contain 'ollama run', got %q", m2.message)
+	}
+}
+
+// TestUpdateEnterKeyStringEquivalent cubre la otra forma del KeyMsg (la string
+// "enter") para que ambos paths queden cubiertos.
+func TestUpdateEnterKeyStringEquivalent(t *testing.T) {
+	m := newWithSize(hwNone(), []eval.Result{
+		{Model: catalog.Model{Name: "qwen2.5:7b", SizeGB: 4.7, Params: "7B", Quant: "Q4_K_M"}, Verdict: eval.Good, Backend: "CPU", NeedGB: 5.0},
+	}, 120, 40)
+	nm, _ := m.Update(key("enter"))
+	m2 := nm.(Model)
+	if !strings.Contains(m2.message, "qwen2.5:7b") {
+		t.Errorf("Enter via key string should also set message, got %q", m2.message)
+	}
+}
+
+// TestUpdateEnterOnEmptyViewDoesNotPanic cubre el caso borde view==0.
+func TestUpdateEnterOnEmptyViewDoesNotPanic(t *testing.T) {
+	m := newWithSize(hwNone(), nil, 120, 40)
+	m.applyFilter() // view queda vacío
+	defer func() {
+		if r := recover(); r != nil {
+			t.Errorf("Enter on empty view panicked: %v", r)
+		}
+	}()
+	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m2 := nm.(Model)
+	if m2.message != "" {
+		t.Errorf("Enter on empty view should not set message, got %q", m2.message)
+	}
+}
+
+// TestFooterShowsCopiedMessage verifica que el footer muestre el mensaje y no
+// el help cuando m.message está seteado.
+func TestFooterShowsCopiedMessage(t *testing.T) {
+	m := newWithSize(hwNone(), makeResults(), 120, 40)
+	m.message = "✓ copiado al portapapeles: ollama run llama3.1:8b"
+	got := m.footer()
+	if !strings.Contains(got, "ollama run llama3.1:8b") {
+		t.Errorf("footer should show copied message, got %q", got)
+	}
+	if strings.Contains(got, "filtro [") {
+		t.Errorf("footer should hide help when message is set, got %q", got)
+	}
+}
+
+// TestNextKeyClearsMessage verifica que cualquier tecla limpia el mensaje
+// para que no quede persistente en el footer.
+func TestNextKeyClearsMessage(t *testing.T) {
+	m := newWithSize(hwNone(), makeResults(), 120, 40)
+	m.message = "✓ copiado al portapapeles: ollama run llama3.1:8b"
+	nm, _ := m.Update(key("j"))
+	m2 := nm.(Model)
+	if m2.message != "" {
+		t.Errorf("message should be cleared by next key, got %q", m2.message)
+	}
+}
