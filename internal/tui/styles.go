@@ -54,12 +54,12 @@ const (
 func (f filter) label() string {
 	switch f {
 	case fGood:
-		return "va bien"
+		return msgFilterGood
 	case fTight:
-		return "justo"
+		return msgFilterTight
 	case fNo:
-		return "no cabe"
+		return msgFilterNo
 	default:
-		return "todos"
+		return msgFilterAll
 	}
 }

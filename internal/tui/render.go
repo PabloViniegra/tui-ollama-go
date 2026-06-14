@@ -51,9 +51,9 @@ func (m Model) header() string {
 	line1 := titleStyle.Render(" Ollama Fit ") + " " +
 		hwStyle.Render(fmt.Sprintf("%d modelos", len(m.all))) + " " +
 		glyphCounts(g, t, n)
-	cpuLine := hwStyle.Render(fmt.Sprintf("CPU  %s · %d núcleos    RAM  %.1f GB",
+	cpuLine := hwStyle.Render(fmt.Sprintf(msgCPUHeader,
 		m.hw.CPUModel, m.hw.CPUCores, m.hw.RAMGB))
-	gpuLine := hwStyle.Render("GPU  " + m.gpuDescr())
+	gpuLine := hwStyle.Render(fmt.Sprintf(msgGPUHeader, m.gpuDescr()))
 	return line1 + "\n" + cpuLine + "\n" + gpuLine + "\n" + m.columnHeader()
 }
 
@@ -61,20 +61,20 @@ func cell(s string, w int) string { return lipgloss.NewStyle().Width(w).Render(s
 
 func (m Model) columnHeader() string {
 	body := gutterGlyph(cDim, false) + " " +
-		cell("ESTADO", wStatus) + cell("MODELO", wName) + cell("PARÁM", wParams) +
-		cell("CUANT", wQuant) + cell("MEMORIA", wMemory) +
-		cell("BACKEND", wBackend)
+		cell(msgStatus, wStatus) + cell(msgModel, wName) + cell(msgParams, wParams) +
+		cell(msgQuant, wQuant) + cell(msgMemory, wMemory) +
+		cell(msgBackend, wBackend)
 	return colHeadStyle.Render(body)
 }
 
 func statusText(v eval.Verdict) string {
 	switch v {
 	case eval.Good:
-		return "Va bien"
+		return msgGood
 	case eval.Tight:
-		return "Justo"
+		return msgTight
 	default:
-		return "No cabe"
+		return msgNoFit
 	}
 }
 
@@ -138,7 +138,7 @@ func (m Model) renderRow(r eval.Result, selected bool) string {
 
 func (m Model) listView(height int) string {
 	if len(m.view) == 0 {
-		return dimStyle.Render("  (sin resultados para el filtro/búsqueda actual)")
+		return dimStyle.Render(msgNoResults)
 	}
 	start := m.offset
 	end := start + height
@@ -157,8 +157,7 @@ func (m Model) listView(height int) string {
 
 func (m Model) footer() string {
 	if m.searching {
-		return footStyle.Render(fmt.Sprintf(" buscar: %s_   (enter aplica · esc limpia)", m.search))
+		return footStyle.Render(fmt.Sprintf(msgSearchPrompt, m.search))
 	}
-	return footStyle.Render(fmt.Sprintf("↑/↓ mover · pgup/pgdn · g/G inicio/fin · f filtro [%s] · / buscar · q salir",
-		m.filter.label()))
+	return footStyle.Render(fmt.Sprintf(msgFooterHelp, m.filter.label()))
 }
