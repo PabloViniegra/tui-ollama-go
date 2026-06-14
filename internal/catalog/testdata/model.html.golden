@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+<body>
+  <main>
+    <div>
+      <a href="/library/llama3.1:latest">llama3.1</a>
+    </div>
+    <div>
+      <a href="/library/llama3.1:8b">llama3.1:8b 4.9GB · 128K · Text</a>
+    </div>
+    <div>
+      <a href="/library/llama3.1:70b">llama3.1:70b 43GB · 128K · Text</a>
+    </div>
+    <div>
+      <a href="/library/llama3.1:8b">llama3.1:8b</a>
+    </div>
+    <div>
+      <a href="/library/llama3.1:405b">llama3.1:405b 243GB · 128K · Text</a>
+    </div>
+  </main>
+</body>
+</html>

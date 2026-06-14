@@ -3,6 +3,7 @@ package catalog
 import (
 	"bytes"
 	"context"
+	"embed"
 	"errors"
 	"io"
 	"net/http"
@@ -12,6 +13,9 @@ import (
 	"testing"
 	"time"
 )
+
+//go:embed testdata/library.html.golden testdata/model.html.golden
+var testdataFS embed.FS
 
 // ----- existing tests (preserved) -----
 
@@ -124,6 +128,51 @@ func TestFetchOfflineWithProgress(t *testing.T) {
 	}
 	if len(msgs) == 0 {
 		t.Error("expected at least one progress message")
+	}
+}
+
+func TestFetchCacheMissFallsBackToEmbedded(t *testing.T) {
+	// With refresh=true the cache is ignored; if network is unavailable
+	// and there is no cache, it falls back to embedded models.
+	// We test the offline=true path separately, so this is a smoke test.
+	models, err := Fetch(true, true, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(models) == 0 {
+		t.Error("expected non-empty embedded catalog")
+	}
+}
+
+func TestSaveCacheMkdirError(t *testing.T) {
+	// Try to save to a path that is not a directory to trigger MkdirAll error.
+	path := "/dev/null/catalog.json"
+	models := []Model{{Name: "test", Family: "test", Params: "7B", Quant: "Q4_K_M", SizeGB: 1.0}}
+	err := saveCache(path, models)
+	if err == nil {
+		t.Fatal("expected error for invalid path, got nil")
+	}
+}
+
+func TestHumanAgeNow(t *testing.T) {
+	got := humanAge(time.Now())
+	if got != "hace segundos" {
+		t.Fatalf("humanAge(now) = %q, want hace segundos", got)
+	}
+}
+
+func TestCachePathFallback(t *testing.T) {
+	// Force os.UserCacheDir to fail by clearing HOME.
+	oldHome := os.Getenv("HOME")
+	os.Setenv("HOME", "")
+	defer os.Setenv("HOME", oldHome)
+
+	p := cachePath()
+	if p == "" {
+		t.Fatal("cachePath returned empty string when HOME is empty")
+	}
+	if !strings.Contains(p, "tmp") && !strings.Contains(p, "Temp") {
+		t.Fatalf("cachePath() = %q, expected to fall back to temp dir", p)
 	}
 }
 
@@ -254,5 +303,207 @@ func TestScrapeLibraryWithFakeDoer(t *testing.T) {
 	}
 	if len(names) != 1 || names[0] != "llama3" {
 		t.Fatalf("names = %v, want [llama3]", names)
+	}
+}
+
+func TestScrapeLibraryWithFixture(t *testing.T) {
+	b, err := testdataFS.ReadFile("testdata/library.html.golden")
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+	f := &fakeDoer{
+		resp: map[string]*http.Response{
+			libraryURL: {
+				StatusCode: 200,
+				Body:       io.NopCloser(bytes.NewBuffer(b)),
+			},
+		},
+	}
+	names, err := scrapeLibrary(context.Background(), f)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(names) != 5 {
+		t.Fatalf("got %d names, want 5", len(names))
+	}
+	want := map[string]bool{"llama3": true, "llama3.1": true, "mistral": true, "qwen2.5": true, "gemma3": true}
+	for _, n := range names {
+		if !want[n] {
+			t.Fatalf("unexpected name: %q", n)
+		}
+	}
+}
+
+func TestScrapeModelWithFixture(t *testing.T) {
+	b, err := testdataFS.ReadFile("testdata/model.html.golden")
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+	f := &fakeDoer{
+		resp: map[string]*http.Response{
+			libraryURL + "/llama3.1": {
+				StatusCode: 200,
+				Body:       io.NopCloser(bytes.NewBuffer(b)),
+			},
+		},
+	}
+	models, err := scrapeModel(context.Background(), f, "llama3.1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(models) != 3 {
+		t.Fatalf("got %d models, want 3", len(models))
+	}
+	found := map[string]float64{}
+	for _, m := range models {
+		found[m.Name] = m.SizeGB
+	}
+	if found["llama3.1:8b"] != 4.9 {
+		t.Fatalf("llama3.1:8b size = %v, want 4.9", found["llama3.1:8b"])
+	}
+	if found["llama3.1:70b"] != 43.0 {
+		t.Fatalf("llama3.1:70b size = %v, want 43.0", found["llama3.1:70b"])
+	}
+	if found["llama3.1:405b"] != 243.0 {
+		t.Fatalf("llama3.1:405b size = %v, want 243.0", found["llama3.1:405b"])
+	}
+}
+
+func TestScrapeModelSkipsLatest(t *testing.T) {
+	f := &fakeDoer{
+		resp: map[string]*http.Response{
+			libraryURL + "/test": {
+				StatusCode: 200,
+				Body:       io.NopCloser(bytes.NewBufferString(`<html><body><a href="/library/test:latest">test:latest</a><a href="/library/test:7b">test:7b 4.1GB</a></body></html>`)),
+			},
+		},
+	}
+	models, err := scrapeModel(context.Background(), f, "test")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(models) != 1 {
+		t.Fatalf("got %d models, want 1", len(models))
+	}
+	if models[0].Name != "test:7b" {
+		t.Fatalf("Name = %q, want test:7b", models[0].Name)
+	}
+}
+
+func TestScrapeAllWithFakeDoer(t *testing.T) {
+	lib, _ := testdataFS.ReadFile("testdata/library.html.golden")
+	mod, _ := testdataFS.ReadFile("testdata/model.html.golden")
+	f := &fakeDoer{
+		resp: map[string]*http.Response{
+			libraryURL: {
+				StatusCode: 200,
+				Body:       io.NopCloser(bytes.NewBuffer(lib)),
+			},
+			libraryURL + "/llama3": {
+				StatusCode: 200,
+				Body:       io.NopCloser(bytes.NewBuffer(mod)),
+			},
+			libraryURL + "/llama3.1": {
+				StatusCode: 200,
+				Body:       io.NopCloser(bytes.NewBuffer(mod)),
+			},
+			libraryURL + "/mistral": {
+				StatusCode: 200,
+				Body:       io.NopCloser(bytes.NewBuffer(mod)),
+			},
+			libraryURL + "/qwen2.5": {
+				StatusCode: 200,
+				Body:       io.NopCloser(bytes.NewBuffer(mod)),
+			},
+			libraryURL + "/gemma3": {
+				StatusCode: 200,
+				Body:       io.NopCloser(bytes.NewBuffer(mod)),
+			},
+		},
+	}
+	models, err := scrapeAll(context.Background(), f, func(string) {})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(models) == 0 {
+		t.Fatalf("expected models, got none")
+	}
+}
+
+func TestGetDocHTTPError(t *testing.T) {
+	f := &fakeDoer{
+		err: map[string]error{
+			libraryURL: errors.New("network error"),
+		},
+	}
+	_, err := getDoc(context.Background(), f, libraryURL)
+	if err == nil {
+		t.Fatalf("expected error, got nil")
+	}
+}
+
+func TestGetDocNon200(t *testing.T) {
+	f := &fakeDoer{
+		resp: map[string]*http.Response{
+			libraryURL: {
+				StatusCode: 500,
+				Body:       io.NopCloser(bytes.NewBufferString("error")),
+			},
+		},
+	}
+	_, err := getDoc(context.Background(), f, libraryURL)
+	if err == nil {
+		t.Fatalf("expected error for non-200, got nil")
+	}
+}
+
+func TestScrapeLibraryEmptyPage(t *testing.T) {
+	f := &fakeDoer{
+		resp: map[string]*http.Response{
+			libraryURL: {
+				StatusCode: 200,
+				Body:       io.NopCloser(bytes.NewBufferString(`<html><body></body></html>`)),
+			},
+		},
+	}
+	names, err := scrapeLibrary(context.Background(), f)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(names) != 0 {
+		t.Fatalf("got %d names, want 0", len(names))
+	}
+}
+
+func TestScrapeModelEmptyPage(t *testing.T) {
+	f := &fakeDoer{
+		resp: map[string]*http.Response{
+			libraryURL + "/empty": {
+				StatusCode: 200,
+				Body:       io.NopCloser(bytes.NewBufferString(`<html><body></body></html>`)),
+			},
+		},
+	}
+	models, err := scrapeModel(context.Background(), f, "empty")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(models) != 0 {
+		t.Fatalf("got %d models, want 0", len(models))
+	}
+}
+
+func TestScrapeAllEmptyLibrary(t *testing.T) {
+	f := &fakeDoer{
+		resp: map[string]*http.Response{
+			libraryURL: {
+				StatusCode: 200,
+				Body:       io.NopCloser(bytes.NewBufferString(`<html><body></body></html>`)),
+			},
+		},
+	}
+	_, err := scrapeAll(context.Background(), f, func(string) {})
+	if err == nil {
+		t.Fatalf("expected error for empty library, got nil")
 	}
 }
