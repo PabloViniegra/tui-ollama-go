@@ -27,26 +27,20 @@ func runMain(args []string) int {
 		return 1
 	}
 
-	fmt.Fprintln(os.Stderr, tui.MsgDetectingHardware)
-	hw := hardware.Detect(context.Background())
-
-	models, err := catalog.Fetch(context.Background(), *refresh, *offline, func(s string) {
-		fmt.Fprintln(os.Stderr, s)
-	})
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "aviso:", err)
-	}
-	if len(models) == 0 {
-		fmt.Fprintln(os.Stderr, "no se pudo obtener ningún modelo")
-		return 1
-	}
-
-	results := make([]eval.Result, 0, len(models))
-	for _, mdl := range models {
-		results = append(results, eval.Evaluate(hw, mdl))
+	loader := func() (hardware.Info, []eval.Result, error) {
+		hw := hardware.Detect(context.Background())
+		models, err := catalog.Fetch(context.Background(), *refresh, *offline, nil)
+		if err != nil {
+			return hw, nil, err
+		}
+		results := make([]eval.Result, 0, len(models))
+		for _, mdl := range models {
+			results = append(results, eval.Evaluate(hw, mdl))
+		}
+		return hw, results, nil
 	}
 
-	p := tea.NewProgram(tui.New(hw, results), tea.WithAltScreen())
+	p := tea.NewProgram(tui.NewAsync(loader), tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		return 1

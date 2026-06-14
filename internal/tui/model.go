@@ -4,6 +4,7 @@ package tui
 import (
 	"sort"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -12,21 +13,54 @@ import (
 	"ollama-fit/internal/hardware"
 )
 
-// Model es el estado de la TUI.
-type Model struct {
-	hw        hardware.Info
-	all       []eval.Result
-	view      []eval.Result
-	cursor    int
-	offset    int
-	width     int
-	height    int
-	filter    filter
-	search    string
-	searching bool
+type spinnerMsg struct{}
+
+type loadMsg struct {
+	hw      hardware.Info
+	results []eval.Result
+	err     error
 }
 
-// New construye el modelo ordenando por tamaño ascendente.
+type filter int
+
+const (
+	fAll filter = iota
+	fGood
+	fTight
+	fNo
+)
+
+func (f filter) label() string {
+	switch f {
+	case fGood:
+		return msgFilterGood
+	case fTight:
+		return msgFilterTight
+	case fNo:
+		return msgFilterNo
+	default:
+		return msgFilterAll
+	}
+}
+
+// Model es el estado de la TUI.
+type Model struct {
+	hw          hardware.Info
+	all         []eval.Result
+	view        []eval.Result
+	cursor      int
+	offset      int
+	width       int
+	height      int
+	filter      filter
+	search      string
+	searching   bool
+	spinnerTick int
+	loading     bool
+	loadFn      func() (hardware.Info, []eval.Result, error)
+}
+
+// New construye el modelo con datos ya cargados (tests y uso directo).
 func New(hw hardware.Info, results []eval.Result) Model {
 	sort.SliceStable(results, func(i, j int) bool {
 		return results[i].Model.SizeGB < results[j].Model.SizeGB
@@ -36,7 +70,28 @@ func New(hw hardware.Info, results []eval.Result) Model {
 	return m
 }
 
-func (m Model) Init() tea.Cmd { return nil }
+// NewAsync construye el modelo que carga datos de forma asíncrona via tea.Cmd.
+func NewAsync(fn func() (hardware.Info, []eval.Result, error)) Model {
+	return Model{loading: true, loadFn: fn, filter: fAll}
+}
+
+func spinnerTick() tea.Cmd {
+	return tea.Tick(500*time.Millisecond, func(time.Time) tea.Msg { return spinnerMsg{} })
+}
+
+func (m Model) Init() tea.Cmd {
+	if m.loadFn != nil {
+		fn := m.loadFn
+		return tea.Batch(spinnerTick(), func() tea.Msg {
+			hw, results, err := fn()
+			sort.SliceStable(results, func(i, j int) bool {
+				return results[i].Model.SizeGB < results[j].Model.SizeGB
+			})
+			return loadMsg{hw: hw, results: results, err: err}
+		})
+	}
+	return spinnerTick()
+}
 
 func (m *Model) applyFilter() {
 	q := strings.ToLower(strings.TrimSpace(m.search))
@@ -69,7 +124,7 @@ func (m *Model) applyFilter() {
 }
 
 func (m Model) listHeight() int {
-	h := m.height - lipgloss.Height(m.header()) - lipgloss.Height(m.footer())
+	h := m.height - lipgloss.Height(m.header()) - lipgloss.Height(m.footer()) - separatorLines
 	if h < 1 {
 		h = 1
 	}
@@ -98,6 +153,22 @@ func (m *Model) clampOffset() {
 // Update procesa mensajes de Bubble Tea.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case loadMsg:
+		if msg.err == nil && len(msg.results) > 0 {
+			m.hw = msg.hw
+			m.all = msg.results
+			m.loading = false
+			m.applyFilter()
+		} else {
+			return m, tea.Quit
+		}
+		return m, nil
+	case spinnerMsg:
+		m.spinnerTick++
+		if m.loading {
+			return m, spinnerTick()
+		}
+		return m, nil
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 		m.clampOffset()

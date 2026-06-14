@@ -5,24 +5,29 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// ---------- estilos ----------
+// ---------- palette (dark-terminal-only, truecolor) ----------
 
 var (
-	cGood  = lipgloss.Color("42")  // verde
-	cTight = lipgloss.Color("214") // ámbar
-	cNo    = lipgloss.Color("203") // rojo
-	cDim   = lipgloss.Color("244")
-	cName  = lipgloss.Color("252")
-	cSel   = lipgloss.Color("231")
-	cAcc   = lipgloss.Color("39")
-	cHdrBg = lipgloss.Color("236")
-	cSelBg = lipgloss.Color("237")
+	cGood  = lipgloss.Color("#00D787") // green
+	cTight = lipgloss.Color("#FFB76B") // amber
+	cNo    = lipgloss.Color("#FF5F5F") // red
+	cDim   = lipgloss.Color("#6C6C6C") // dim gray
+	cName  = lipgloss.Color("#E0E0E0") // model name normal
+	cSel   = lipgloss.Color("#FFFFFF") // selected / bright
+	cAcc   = lipgloss.Color("#5FD7FF") // accent (title, spinner)
+	cSelBg = lipgloss.Color("#1E2A35") // selected row background (teal tint)
+	cMuted = lipgloss.Color("#9E9E9E") // column header text
+	cFoot  = lipgloss.Color("#585858") // footer / help text
+)
 
-	titleStyle   = lipgloss.NewStyle().Bold(true).Foreground(cSel).Background(cAcc)
+// ---------- styles ----------
+
+var (
+	titleStyle   = lipgloss.NewStyle().Bold(true).Foreground(cSel).Background(cAcc).Padding(0, 1)
 	selRowStyle  = lipgloss.NewStyle().Background(cSelBg)
 	hwStyle      = lipgloss.NewStyle().Foreground(cDim)
-	colHeadStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("250")).Background(cHdrBg)
-	footStyle    = lipgloss.NewStyle().Foreground(cDim)
+	colHeadStyle = lipgloss.NewStyle().Bold(true).Foreground(cMuted)
+	footStyle    = lipgloss.NewStyle().Foreground(cFoot).Italic(true)
 	dimStyle     = lipgloss.NewStyle().Foreground(cDim)
 
 	nameStyle         = lipgloss.NewStyle().Foreground(cName)
@@ -30,7 +35,8 @@ var (
 	statusStyleBase   = lipgloss.NewStyle().Bold(true)
 )
 
-// anchos de columna
+// ---------- column widths ----------
+
 const (
 	wStatus  = 9
 	wName    = 24
@@ -40,26 +46,3 @@ const (
 	wBackend = 12
 )
 
-// ---------- filtro ----------
-
-type filter int
-
-const (
-	fAll filter = iota
-	fGood
-	fTight
-	fNo
-)
-
-func (f filter) label() string {
-	switch f {
-	case fGood:
-		return msgFilterGood
-	case fTight:
-		return msgFilterTight
-	case fNo:
-		return msgFilterNo
-	default:
-		return msgFilterAll
-	}
-}
