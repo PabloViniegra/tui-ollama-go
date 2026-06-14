@@ -15,9 +15,17 @@ import (
 )
 
 func main() {
-	refresh := flag.Bool("refresh", false, "ignora la caché y vuelve a scrapear ollama.com")
-	offline := flag.Bool("offline", false, "no usa red; usa el catálogo embebido de respaldo")
-	flag.Parse()
+	os.Exit(runMain(os.Args))
+}
+
+func runMain(args []string) int {
+	fs := flag.NewFlagSet(args[0], flag.ContinueOnError)
+	refresh := fs.Bool("refresh", false, "ignora la caché y vuelve a scrapear ollama.com")
+	offline := fs.Bool("offline", false, "no usa red; usa el catálogo embebido de respaldo")
+	if err := fs.Parse(args[1:]); err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		return 1
+	}
 
 	fmt.Fprintln(os.Stderr, "Detectando hardware…")
 	hw := hardware.Detect(context.Background())
@@ -30,7 +38,7 @@ func main() {
 	}
 	if len(models) == 0 {
 		fmt.Fprintln(os.Stderr, "no se pudo obtener ningún modelo")
-		os.Exit(1)
+		return 1
 	}
 
 	results := make([]eval.Result, 0, len(models))
@@ -41,6 +49,7 @@ func main() {
 	p := tea.NewProgram(tui.New(hw, results), tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
-		os.Exit(1)
+		return 1
 	}
+	return 0
 }

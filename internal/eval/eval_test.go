@@ -30,6 +30,24 @@ func TestGpuLabel(t *testing.T) {
 	}
 }
 
+func TestVerdictString(t *testing.T) {
+	tests := []struct {
+		v    Verdict
+		want string
+	}{
+		{Good, "Good"},
+		{Tight, "Tight"},
+		{No, "No"},
+		{Verdict(99), "Unknown"},
+	}
+	for _, tc := range tests {
+		got := tc.v.String()
+		if got != tc.want {
+			t.Errorf("Verdict(%d).String() = %q, want %q", tc.v, got, tc.want)
+		}
+	}
+}
+
 func model(name string, sizeGB float64) catalog.Model {
 	return catalog.Model{Name: name, Family: name, Params: "7B", Quant: "Q4_K_M", SizeGB: sizeGB}
 }
