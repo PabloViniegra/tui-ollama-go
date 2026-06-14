@@ -14,7 +14,7 @@ go run . --refresh   # bypass cache, re-scrape ollama.com
 go run . --offline   # skip network, use embedded fallback catalog
 ```
 
-No test suite exists yet.
+Test suite exists across all packages (hardware, catalog, eval, tui, main). Run `go test ./...`.
 
 ## 1. Think Before Coding
 
