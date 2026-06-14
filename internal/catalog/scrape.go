@@ -37,6 +37,11 @@ type cacheFile struct {
 	Models    []Model   `json:"models"`
 }
 
+// HTTPDoer abstracts *http.Client for testability.
+type HTTPDoer interface {
+	Do(req *http.Request) (*http.Response, error)
+}
+
 // Fetch devuelve el catálogo. Por defecto: caché fresca -> red (scrape) -> caché
 // vieja -> catálogo embebido. Con offline usa directamente el embebido; con
 // refresh ignora la caché. progress recibe mensajes de avance (puede ser nil).
@@ -61,7 +66,8 @@ func Fetch(refresh, offline bool, progress func(string)) ([]Model, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
 
-	models, err := scrapeAll(ctx, progress)
+	client := &http.Client{Timeout: 25 * time.Second}
+	models, err := scrapeAll(ctx, client, progress)
 	if err != nil || len(models) == 0 {
 		if cf, ok := loadCache(path); ok && len(cf.Models) > 0 {
 			progress("Scrape falló; uso caché previa.")
@@ -77,11 +83,9 @@ func Fetch(refresh, offline bool, progress func(string)) ([]Model, error) {
 	return models, nil
 }
 
-func scrapeAll(ctx context.Context, progress func(string)) ([]Model, error) {
-	client := &http.Client{Timeout: 25 * time.Second}
-
+func scrapeAll(ctx context.Context, doer HTTPDoer, progress func(string)) ([]Model, error) {
 	progress("Recuperando lista de modelos de ollama.com/library…")
-	names, err := scrapeLibrary(ctx, client)
+	names, err := scrapeLibrary(ctx, doer)
 	if err != nil {
 		return nil, err
 	}
@@ -103,7 +107,7 @@ func scrapeAll(ctx context.Context, progress func(string)) ([]Model, error) {
 		go func(name string) {
 			defer wg.Done()
 			defer func() { <-sem }()
-			if ms, err := scrapeModel(ctx, client, name); err == nil {
+			if ms, err := scrapeModel(ctx, doer, name); err == nil {
 				mu.Lock()
 				all = append(all, ms...)
 				mu.Unlock()
@@ -121,8 +125,8 @@ func scrapeAll(ctx context.Context, progress func(string)) ([]Model, error) {
 }
 
 // scrapeLibrary devuelve los nombres base de modelo (sin tag) de /library.
-func scrapeLibrary(ctx context.Context, client *http.Client) ([]string, error) {
-	doc, err := getDoc(ctx, client, libraryURL)
+func scrapeLibrary(ctx context.Context, doer HTTPDoer) ([]string, error) {
+	doc, err := getDoc(ctx, doer, libraryURL)
 	if err != nil {
 		return nil, err
 	}
@@ -145,8 +149,8 @@ func scrapeLibrary(ctx context.Context, client *http.Client) ([]string, error) {
 }
 
 // scrapeModel lee /library/<name> y extrae sus variantes con tamaño.
-func scrapeModel(ctx context.Context, client *http.Client, name string) ([]Model, error) {
-	doc, err := getDoc(ctx, client, libraryURL+"/"+name)
+func scrapeModel(ctx context.Context, doer HTTPDoer, name string) ([]Model, error) {
+	doc, err := getDoc(ctx, doer, libraryURL+"/"+name)
 	if err != nil {
 		return nil, err
 	}
@@ -186,14 +190,14 @@ func scrapeModel(ctx context.Context, client *http.Client, name string) ([]Model
 	return out, nil
 }
 
-func getDoc(ctx context.Context, client *http.Client, url string) (*goquery.Document, error) {
+func getDoc(ctx context.Context, doer HTTPDoer, url string) (*goquery.Document, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("User-Agent", userAgent)
 	req.Header.Set("Accept", "text/html")
-	resp, err := client.Do(req)
+	resp, err := doer.Do(req)
 	if err != nil {
 		return nil, err
 	}
