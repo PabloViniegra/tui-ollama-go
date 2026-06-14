@@ -3,6 +3,7 @@
 skills-lock.json
 .mcp.json
 opencode.json
+.opencode/*
 # Local AI runtime state
 .atl/
 coverage.out
