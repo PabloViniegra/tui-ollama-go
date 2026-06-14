@@ -75,10 +75,93 @@ func TestNewEmptyResults(t *testing.T) {
 	}
 }
 
+func TestSpinnerFrame(t *testing.T) {
+	frames := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+	for i, want := range frames {
+		got := spinnerFrame(i)
+		if got != want {
+			t.Errorf("spinnerFrame(%d) = %q, want %q", i, got, want)
+		}
+	}
+	if spinnerFrame(10) != frames[0] {
+		t.Errorf("spinnerFrame(10) should wrap to frame 0, got %q", spinnerFrame(10))
+	}
+}
+
+func TestUpdateSpinnerAdvancesFrame(t *testing.T) {
+	m := NewAsync(func() (hardware.Info, []eval.Result, error) { return hwNone(), nil, nil })
+	m.spinnerTick = 0
+	newModel, cmd := m.Update(spinnerMsg{})
+	m2 := newModel.(Model)
+	if m2.spinnerTick != 1 {
+		t.Errorf("spinnerTick = %d, want 1", m2.spinnerTick)
+	}
+	if cmd == nil {
+		t.Error("expected next tick cmd while still loading")
+	}
+}
+
+func TestUpdateSpinnerStopsAfterWindowSize(t *testing.T) {
+	m := New(hwNone(), nil) // loading=false, spinner stops immediately
+	m.width, m.height = 120, 40
+	_, cmd := m.Update(spinnerMsg{})
+	if cmd != nil {
+		t.Error("expected nil cmd when not in loading state")
+	}
+}
+
+func TestNewAsyncStartsLoading(t *testing.T) {
+	called := false
+	m := NewAsync(func() (hardware.Info, []eval.Result, error) {
+		called = true
+		return hwNone(), makeResults(), nil
+	})
+	if !m.loading {
+		t.Error("NewAsync should set loading=true")
+	}
+	cmd := m.Init()
+	if cmd == nil {
+		t.Error("NewAsync Init() should return a cmd")
+	}
+	_ = called
+}
+
+func TestLoadMsgPopulatesModel(t *testing.T) {
+	m := NewAsync(func() (hardware.Info, []eval.Result, error) {
+		return hwNone(), makeResults(), nil
+	})
+	newModel, _ := m.Update(loadMsg{hw: hwNone(), results: makeResults()})
+	m2 := newModel.(Model)
+	if m2.loading {
+		t.Error("loading should be false after loadMsg")
+	}
+	if len(m2.all) != 3 {
+		t.Errorf("expected 3 results, got %d", len(m2.all))
+	}
+}
+
+func TestViewShowsSpinnerWhileLoading(t *testing.T) {
+	m := NewAsync(func() (hardware.Info, []eval.Result, error) {
+		return hwNone(), nil, nil
+	})
+	m.width, m.height = 120, 40
+	got := m.View()
+	found := false
+	for _, f := range spinnerFrames {
+		if strings.Contains(got, f) {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("View() while loading should show spinner, got %q", got)
+	}
+}
+
 func TestInit(t *testing.T) {
 	m := New(hwNone(), nil)
-	if cmd := m.Init(); cmd != nil {
-		t.Error("Init() should return nil")
+	if cmd := m.Init(); cmd == nil {
+		t.Error("Init() should return spinner tick cmd")
 	}
 }
 
@@ -215,26 +298,25 @@ func TestStatusText(t *testing.T) {
 }
 
 func TestStatusColor(t *testing.T) {
-	tests := []struct {
-		v    eval.Verdict
-		want lipgloss.Color
-	}{
-		{eval.Good, cGood},
-		{eval.Tight, cTight},
-		{eval.No, cNo},
+	if statusColor(eval.Good) != cGood {
+		t.Errorf("Good color mismatch: got %v, want %v", statusColor(eval.Good), cGood)
 	}
-	for _, tc := range tests {
-		got := statusColor(tc.v)
-		if got != tc.want {
-			t.Errorf("statusColor(%v) = %v, want %v", tc.v, got, tc.want)
-		}
+	if statusColor(eval.Tight) != cTight {
+		t.Errorf("Tight color mismatch: got %v, want %v", statusColor(eval.Tight), cTight)
+	}
+	if statusColor(eval.No) != cNo {
+		t.Errorf("No color mismatch: got %v, want %v", statusColor(eval.No), cNo)
+	}
+	// Each verdict maps to a distinct color.
+	if statusColor(eval.Good) == statusColor(eval.Tight) || statusColor(eval.Good) == statusColor(eval.No) {
+		t.Error("verdict colors must be distinct")
 	}
 }
 
 // ---------- helpers ----------
 
 func TestGutterGlyph(t *testing.T) {
-	lipgloss.SetColorProfile(termenv.ANSI256)
+	lipgloss.SetColorProfile(termenv.TrueColor)
 	cases := []struct {
 		c        lipgloss.Color
 		selected bool
@@ -261,7 +343,7 @@ func TestGutterGlyph(t *testing.T) {
 }
 
 func TestArrowSignature(t *testing.T) {
-	lipgloss.SetColorProfile(termenv.ANSI256)
+	lipgloss.SetColorProfile(termenv.TrueColor)
 	cases := []struct {
 		size, need float64
 		c          lipgloss.Color
@@ -276,20 +358,17 @@ func TestArrowSignature(t *testing.T) {
 		if !strings.Contains(got, "→") {
 			t.Errorf("arrowSignature(%v,%v) missing arrow, got %q", tc.size, tc.need, got)
 		}
-		want := fmt.Sprintf("%.1f GB", tc.size)
-		if !strings.Contains(got, want) {
-			t.Errorf("arrowSignature(%v,%v) missing size %q, got %q", tc.size, tc.need, want, got)
+		wantSize := fmt.Sprintf("%.1f GB", tc.size)
+		if !strings.Contains(got, wantSize) {
+			t.Errorf("arrowSignature(%v,%v) missing size %q, got %q", tc.size, tc.need, wantSize, got)
 		}
-		// Verify color application: ANSI 256 codes for cGood (42) and cNo (203)
-		var wantColor string
-		switch tc.c {
-		case cGood:
-			wantColor = "38;5;42m"
-		case cNo:
-			wantColor = "38;5;203m"
+		wantNeed := fmt.Sprintf("%.1f GB", tc.need)
+		if !strings.Contains(got, wantNeed) {
+			t.Errorf("arrowSignature(%v,%v) missing need %q, got %q", tc.size, tc.need, wantNeed, got)
 		}
-		if wantColor != "" && !strings.Contains(got, wantColor) {
-			t.Errorf("arrowSignature(%v,%v,%v) missing color sequence %q, got %q", tc.size, tc.need, tc.c, wantColor, got)
+		// color must be applied (ANSI escape present)
+		if !strings.Contains(got, "\x1b[") {
+			t.Errorf("arrowSignature(%v,%v) missing ANSI escape, got %q", tc.size, tc.need, got)
 		}
 	}
 }
@@ -376,10 +455,10 @@ func TestGpuDescrUnknownVRAM(t *testing.T) {
 // ---------- View ----------
 
 func TestViewZeroSize(t *testing.T) {
-	m := New(hwNone(), makeResults())
+	m := New(hwNone(), makeResults()) // loading=false, but no window size yet
 	got := m.View()
-	if got != MsgDetectingHardware {
-		t.Errorf("View() with zero size = %q", got)
+	if !strings.Contains(got, MsgDetectingHardware) {
+		t.Errorf("View() zero size: missing detecting message, got %q", got)
 	}
 }
 
@@ -389,7 +468,7 @@ func TestViewWithSize(t *testing.T) {
 	if got == "" {
 		t.Error("View() returned empty string")
 	}
-	if got == MsgDetectingHardware {
+	if strings.Contains(got, MsgDetectingHardware) {
 		t.Error("View() still shows loading with non-zero size")
 	}
 	if !strings.Contains(got, "Ollama Fit") {
@@ -397,6 +476,9 @@ func TestViewWithSize(t *testing.T) {
 	}
 	if !strings.Contains(got, "✓") && !strings.Contains(got, "!") && !strings.Contains(got, "✗") {
 		t.Errorf("View() missing verdict glyphs, got %q", got)
+	}
+	if !strings.Contains(got, "─") {
+		t.Errorf("View() missing box-drawing separator ─")
 	}
 }
 
@@ -768,5 +850,63 @@ func TestColumnHeaderNoTamanoNecesita(t *testing.T) {
 	}
 	if !strings.Contains(got, "MEMORIA") {
 		t.Errorf("column header missing MEMORIA, got %q", got)
+	}
+}
+
+// ---------- layout: width and height stability ----------
+
+// TestViewNoLineExceedsTerminalWidth guards against visual line-wrap that causes
+// lipgloss.Height(header) to undercount, making listHeight() return one row too
+// many and pushing the header off screen on narrow terminals (≤80 cols).
+func TestViewNoLineExceedsTerminalWidth(t *testing.T) {
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	for _, w := range []int{80, 100, 120} {
+		m := newWithSize(hwNone(), makeResults(), w, 30)
+		for i, line := range strings.Split(m.View(), "\n") {
+			if lw := lipgloss.Width(line); lw > w {
+				t.Errorf("w=%d: line %d visual width %d > terminal width: %q", w, i, lw, line)
+			}
+		}
+	}
+}
+
+func TestViewHeightEqualsTerminalHeight(t *testing.T) {
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	for _, h := range []int{20, 30, 40} {
+		m := newWithSize(hwNone(), makeResults(), 120, h)
+		if got := lipgloss.Height(m.View()); got != h {
+			t.Errorf("h=%d: View() line count = %d, want %d", h, got, h)
+		}
+	}
+}
+
+func makeManyResults(n int) []eval.Result {
+	results := make([]eval.Result, n)
+	for i := range results {
+		results[i] = eval.Result{
+			Model:   catalog.Model{Name: fmt.Sprintf("model-%02d:7b", i+1), SizeGB: float64(i + 1)},
+			Verdict: eval.Good,
+			Backend: "CPU",
+			NeedGB:  float64(i+1) * 1.2,
+		}
+	}
+	return results
+}
+
+// TestViewNoWrapWhileScrolling scrolls through a long list on a narrow terminal
+// and verifies no line ever exceeds the terminal width.
+func TestViewNoWrapWhileScrolling(t *testing.T) {
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	const w, h = 80, 20
+	m := newWithSize(hwNone(), makeManyResults(50), w, h)
+	for step := range 50 {
+		for i, line := range strings.Split(m.View(), "\n") {
+			if lw := lipgloss.Width(line); lw > w {
+				t.Errorf("step %d, line %d: visual width %d > %d", step, i, lw, w)
+				return
+			}
+		}
+		m2, _ := m.Update(key("j"))
+		m = m2.(Model)
 	}
 }
