@@ -115,20 +115,20 @@ func applySelectionStyle(s string, selected bool) string {
 }
 
 func (m Model) renderRow(r eval.Result, selected bool) string {
-	nameStyle := lipgloss.NewStyle().Foreground(cName)
+	ns := nameStyle
 	if selected {
-		nameStyle = nameStyle.Foreground(cSel).Bold(true)
+		ns = nameStyleSelected
 	}
 	var statusCell string
 	if selected {
-		statusCell = cell(lipgloss.NewStyle().Foreground(statusColor(r.Verdict)).Bold(true).Render(statusText(r.Verdict)), wStatus)
+		statusCell = cell(statusStyleBase.Foreground(statusColor(r.Verdict)).Render(statusText(r.Verdict)), wStatus)
 	} else {
 		statusCell = cell("", wStatus)
 	}
 	arrow := arrowSignature(r.Model.SizeGB, r.NeedGB, statusColor(r.Verdict))
 	row := gutterGlyph(statusColor(r.Verdict), selected) + " " +
 		statusCell +
-		cell(nameStyle.Render(r.Model.Name), wName) +
+		cell(ns.Render(r.Model.Name), wName) +
 		cell(dimStyle.Render(r.Model.Params), wParams) +
 		cell(dimStyle.Render(r.Model.Quant), wQuant) +
 		cell(arrow, wMemory) +

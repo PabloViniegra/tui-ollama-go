@@ -24,6 +24,10 @@ var (
 	colHeadStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("250")).Background(cHdrBg)
 	footStyle    = lipgloss.NewStyle().Foreground(cDim)
 	dimStyle     = lipgloss.NewStyle().Foreground(cDim)
+
+	nameStyle         = lipgloss.NewStyle().Foreground(cName)
+	nameStyleSelected = lipgloss.NewStyle().Foreground(cSel).Bold(true)
+	statusStyleBase   = lipgloss.NewStyle().Bold(true)
 )
 
 // anchos de columna
