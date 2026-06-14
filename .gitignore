@@ -1,0 +1,7 @@
+.agents/skills/*
+.claude/*
+skills-lock.json
+.mcp.json
+opencode.json
+# Local AI runtime state
+.atl/
