@@ -1,12 +1,19 @@
 package catalog
 
 import (
+	"bytes"
+	"context"
+	"errors"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 )
+
+// ----- existing tests (preserved) -----
 
 func TestParseSizeGB(t *testing.T) {
 	tests := []struct {
@@ -174,5 +181,78 @@ func TestCachePath(t *testing.T) {
 	}
 	if !strings.Contains(p, "ollama-fit") {
 		t.Errorf("cachePath() = %q, expected to contain 'ollama-fit'", p)
+	}
+}
+
+// ----- new TDD tests (RED) -----
+
+// fakeDoer implements HTTPDoer for tests.
+type fakeDoer struct {
+	resp map[string]*http.Response
+	err  map[string]error
+}
+
+func (f *fakeDoer) Do(req *http.Request) (*http.Response, error) {
+	url := req.URL.String()
+	if e, ok := f.err[url]; ok {
+		return nil, e
+	}
+	if r, ok := f.resp[url]; ok {
+		return r, nil
+	}
+	return nil, errors.New("no response for " + url)
+}
+
+func TestFakeDoerImplementsHTTPDoer(t *testing.T) {
+	var _ HTTPDoer = &fakeDoer{}
+}
+
+func TestFakeDoerHappyPath(t *testing.T) {
+	f := &fakeDoer{
+		resp: map[string]*http.Response{
+			"https://example.com": {
+				StatusCode: 200,
+				Body:       io.NopCloser(bytes.NewBufferString("hello")),
+			},
+		},
+	}
+	req, _ := http.NewRequest("GET", "https://example.com", nil)
+	resp, err := f.Do(req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp.StatusCode != 200 {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+}
+
+func TestFakeDoerErrorInjection(t *testing.T) {
+	f := &fakeDoer{
+		err: map[string]error{
+			"https://example.com": errors.New("network error"),
+		},
+	}
+	req, _ := http.NewRequest("GET", "https://example.com", nil)
+	_, err := f.Do(req)
+	if err == nil {
+		t.Fatalf("expected error, got nil")
+	}
+}
+
+func TestScrapeLibraryWithFakeDoer(t *testing.T) {
+	f := &fakeDoer{
+		resp: map[string]*http.Response{
+			libraryURL: {
+				StatusCode: 200,
+				Body:       io.NopCloser(bytes.NewBufferString(`<html><body><a href="/library/llama3">llama3</a></body></html>`)),
+			},
+		},
+	}
+	names, err := scrapeLibrary(context.Background(), f)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(names) != 1 || names[0] != "llama3" {
+		t.Fatalf("names = %v, want [llama3]", names)
 	}
 }
