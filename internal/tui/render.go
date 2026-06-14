@@ -11,11 +11,26 @@ import (
 	"ollama-fit/internal/hardware"
 )
 
+// ponytail: listHeight() subtracts this — View() owns the count, model.go references it.
+const separatorLines = 2
+
+var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+
+func spinnerFrame(tick int) string {
+	return spinnerFrames[tick%len(spinnerFrames)]
+}
+
+func (m Model) separator() string {
+	return dimStyle.Render(strings.Repeat("─", m.width))
+}
+
 func (m Model) View() string {
-	if m.width == 0 || m.height == 0 {
-		return MsgDetectingHardware
+	if m.loading || m.width == 0 || m.height == 0 {
+		frame := lipgloss.NewStyle().Foreground(cAcc).Render(spinnerFrame(m.spinnerTick))
+		return frame + " " + MsgDetectingHardware
 	}
-	return m.header() + "\n" + m.listView(m.listHeight()) + "\n" + m.footer()
+	sep := m.separator()
+	return m.header() + "\n" + sep + "\n" + m.listView(m.listHeight()) + "\n" + sep + "\n" + m.footer()
 }
 
 func (m Model) counts() (g, t, n int) {
@@ -51,9 +66,9 @@ func (m Model) header() string {
 	line1 := titleStyle.Render(" Ollama Fit ") + " " +
 		hwStyle.Render(fmt.Sprintf("%d modelos", len(m.all))) + " " +
 		glyphCounts(g, t, n)
-	cpuLine := hwStyle.Render(fmt.Sprintf(msgCPUHeader,
+	cpuLine := hwStyle.MaxWidth(m.width).Render(fmt.Sprintf(msgCPUHeader,
 		m.hw.CPUModel, m.hw.CPUCores, m.hw.RAMGB))
-	gpuLine := hwStyle.Render(fmt.Sprintf(msgGPUHeader, m.gpuDescr()))
+	gpuLine := hwStyle.MaxWidth(m.width).Render(fmt.Sprintf(msgGPUHeader, m.gpuDescr()))
 	return line1 + "\n" + cpuLine + "\n" + gpuLine + "\n" + m.columnHeader()
 }
 
@@ -64,7 +79,7 @@ func (m Model) columnHeader() string {
 		cell(msgStatus, wStatus) + cell(msgModel, wName) + cell(msgParams, wParams) +
 		cell(msgQuant, wQuant) + cell(msgMemory, wMemory) +
 		cell(msgBackend, wBackend)
-	return colHeadStyle.Render(body)
+	return colHeadStyle.MaxWidth(m.width).Render(body)
 }
 
 func statusText(v eval.Verdict) string {
@@ -133,6 +148,7 @@ func (m Model) renderRow(r eval.Result, selected bool) string {
 		cell(dimStyle.Render(r.Model.Quant), wQuant) +
 		cell(arrow, wMemory) +
 		cell(dimStyle.Render(r.Backend), wBackend)
+	row = lipgloss.NewStyle().MaxWidth(m.width).Render(row)
 	return applySelectionStyle(row, selected)
 }
 
@@ -141,10 +157,7 @@ func (m Model) listView(height int) string {
 		return dimStyle.Render(msgNoResults)
 	}
 	start := m.offset
-	end := start + height
-	if end > len(m.view) {
-		end = len(m.view)
-	}
+	end := min(start+height, len(m.view))
 	lines := make([]string, 0, height)
 	for i := start; i < end; i++ {
 		lines = append(lines, m.renderRow(m.view[i], i == m.cursor))
