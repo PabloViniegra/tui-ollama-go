@@ -32,6 +32,27 @@ const overhead = 1.2
 // appleGPUFraction: fracción de la RAM unificada que Metal puede dedicar a GPU.
 const appleGPUFraction = 0.70
 
+// thresholds de memoria para la heurística.
+const (
+	marginGPUGood    = 0.85 // por debajo de este % de VRAM -> Good
+	marginRAMTight   = 0.90 // por debajo de este % de RAM -> Tight
+	cpuGoodThreshold = 6.0  // GB por debajo de los cuales CPU es Good
+)
+
+// String devuelve el nombre en inglés del veredicto.
+func (v Verdict) String() string {
+	switch v {
+	case Good:
+		return "Good"
+	case Tight:
+		return "Tight"
+	case No:
+		return "No"
+	default:
+		return "Unknown"
+	}
+}
+
 // Evaluate aplica la heurística.
 func Evaluate(h hardware.Info, m catalog.Model) Result {
 	need := m.SizeGB * overhead
@@ -50,7 +71,7 @@ func Evaluate(h hardware.Info, m catalog.Model) Result {
 	}
 
 	// 1) Cabe con holgura en la GPU.
-	if gpuMem > 0 && need <= 0.85*gpuMem {
+	if gpuMem > 0 && need <= marginGPUGood*gpuMem {
 		r.Verdict, r.Backend, r.Reason = Good, gpuBackend, "Acelerado en GPU con margen"
 		return r
 	}
@@ -63,7 +84,7 @@ func Evaluate(h hardware.Info, m catalog.Model) Result {
 	if need <= appleGPUFraction*h.RAMGB {
 		if gpuMem > 0 {
 			r.Verdict, r.Backend, r.Reason = Tight, "GPU+CPU", "Se reparte GPU/CPU, más lento"
-		} else if need <= 6 {
+		} else if need <= cpuGoodThreshold {
 			r.Verdict, r.Backend, r.Reason = Good, "CPU", "Cabe en RAM, fluido en CPU"
 		} else {
 			r.Verdict, r.Backend, r.Reason = Tight, "CPU", "Cabe en RAM pero lento en CPU"
@@ -71,7 +92,7 @@ func Evaluate(h hardware.Info, m catalog.Model) Result {
 		return r
 	}
 	// 4) Apurando la RAM.
-	if need <= 0.90*h.RAMGB {
+	if need <= marginRAMTight*h.RAMGB {
 		r.Verdict, r.Backend, r.Reason = Tight, "CPU", "Apura la RAM, muy lento"
 		return r
 	}
