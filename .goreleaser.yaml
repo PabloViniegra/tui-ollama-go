@@ -18,6 +18,9 @@ builds:
     ignore:
       - goos: windows
         goarch: arm64
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    ldflags:
+      - -s -w
 
 archives:
   - formats:
