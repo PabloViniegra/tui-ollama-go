@@ -3,8 +3,8 @@ package eval
 import (
 	"testing"
 
-	"ollama-fit/internal/catalog"
-	"ollama-fit/internal/hardware"
+	"github.com/PabloViniegra/tui-ollama-go/internal/catalog"
+	"github.com/PabloViniegra/tui-ollama-go/internal/hardware"
 )
 
 func TestGpuLabel(t *testing.T) {

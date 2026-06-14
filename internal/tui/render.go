@@ -8,8 +8,8 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 
-	"ollama-fit/internal/eval"
-	"ollama-fit/internal/hardware"
+	"github.com/PabloViniegra/tui-ollama-go/internal/eval"
+	"github.com/PabloViniegra/tui-ollama-go/internal/hardware"
 )
 
 // ponytail: listHeight() subtracts this — View() owns the count, model.go references it.

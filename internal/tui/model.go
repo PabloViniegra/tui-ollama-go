@@ -11,8 +11,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"ollama-fit/internal/eval"
-	"ollama-fit/internal/hardware"
+	"github.com/PabloViniegra/tui-ollama-go/internal/eval"
+	"github.com/PabloViniegra/tui-ollama-go/internal/hardware"
 )
 
 type spinnerMsg struct{}

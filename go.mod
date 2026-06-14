@@ -1,4 +1,4 @@
-module ollama-fit
+module github.com/PabloViniegra/tui-ollama-go
 
 go 1.23
 

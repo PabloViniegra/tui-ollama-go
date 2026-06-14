@@ -20,6 +20,20 @@ GPU  Apple M3 Pro · memoria unificada (~25 GB usables por GPU)
 - Go 1.22 o superior.
 - (Opcional) GPU NVIDIA con `nvidia-smi` en el PATH para leer VRAM exacta.
 
+## Instalar con `go install`
+
+```bash
+go install github.com/PabloViniegra/tui-ollama-go@latest
+```
+
+El binario se instala como `tui-ollama-go` en `$GOPATH/bin`. Para usarlo como `ollama-fit`, renombralo o crea un alias:
+
+```bash
+mv $(go env GOPATH)/bin/tui-ollama-go $(go env GOPATH)/bin/ollama-fit
+```
+
+> Nota: la ruta de caché sigue siendo `ollama-fit` (`os.UserCacheDir()/ollama-fit/catalog.json`) para mantener compatibilidad con instalaciones previas.
+
 ## Construir y ejecutar
 
 ```bash
