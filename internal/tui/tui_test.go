@@ -1,11 +1,13 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/termenv"
 
 	"ollama-fit/internal/catalog"
 	"ollama-fit/internal/eval"
@@ -229,6 +231,96 @@ func TestStatusColor(t *testing.T) {
 	}
 }
 
+// ---------- helpers ----------
+
+func TestGutterGlyph(t *testing.T) {
+	lipgloss.SetColorProfile(termenv.ANSI256)
+	cases := []struct {
+		c        lipgloss.Color
+		selected bool
+	}{
+		{cGood, false},
+		{cGood, true},
+		{cTight, false},
+		{cTight, true},
+		{cNo, false},
+		{cNo, true},
+	}
+	for _, tc := range cases {
+		got := gutterGlyph(tc.c, tc.selected)
+		if !strings.Contains(got, "▎") {
+			t.Errorf("gutterGlyph(%v, %v) missing glyph, got %q", tc.c, tc.selected, got)
+		}
+		if tc.selected && !strings.Contains(got, "\x1b[1") {
+			t.Errorf("gutterGlyph(%v, true) missing bold ANSI sequence, got %q", tc.c, got)
+		}
+		if !tc.selected && strings.Contains(got, "\x1b[1") {
+			t.Errorf("gutterGlyph(%v, false) should not be bold, got %q", tc.c, got)
+		}
+	}
+}
+
+func TestArrowSignature(t *testing.T) {
+	lipgloss.SetColorProfile(termenv.ANSI256)
+	cases := []struct {
+		size, need float64
+		c          lipgloss.Color
+	}{
+		{0, 0, cGood},
+		{4.5, 3.2, cGood},
+		{8.0, 8.0, cNo},
+		{100.5, 200.0, cNo},
+	}
+	for _, tc := range cases {
+		got := arrowSignature(tc.size, tc.need, tc.c)
+		if !strings.Contains(got, "→") {
+			t.Errorf("arrowSignature(%v,%v) missing arrow, got %q", tc.size, tc.need, got)
+		}
+		want := fmt.Sprintf("%.1f GB", tc.size)
+		if !strings.Contains(got, want) {
+			t.Errorf("arrowSignature(%v,%v) missing size %q, got %q", tc.size, tc.need, want, got)
+		}
+		// Verify color application: ANSI 256 codes for cGood (42) and cNo (203)
+		var wantColor string
+		switch tc.c {
+		case cGood:
+			wantColor = "38;5;42m"
+		case cNo:
+			wantColor = "38;5;203m"
+		}
+		if wantColor != "" && !strings.Contains(got, wantColor) {
+			t.Errorf("arrowSignature(%v,%v,%v) missing color sequence %q, got %q", tc.size, tc.need, tc.c, wantColor, got)
+		}
+	}
+}
+
+func TestGlyphCounts(t *testing.T) {
+	got := glyphCounts(2, 1, 3)
+	if !strings.Contains(got, "✓") || !strings.Contains(got, "!") || !strings.Contains(got, "✗") {
+		t.Errorf("glyphCounts missing glyphs, got %q", got)
+	}
+	if !strings.Contains(got, "2") || !strings.Contains(got, "1") || !strings.Contains(got, "3") {
+		t.Errorf("glyphCounts missing numbers, got %q", got)
+	}
+
+	gotZero := glyphCounts(0, 0, 0)
+	if !strings.Contains(gotZero, "✓") || !strings.Contains(gotZero, "!") || !strings.Contains(gotZero, "✗") {
+		t.Errorf("glyphCounts(0,0,0) missing glyphs, got %q", gotZero)
+	}
+}
+
+func TestApplySelectionStyle(t *testing.T) {
+	s := "test"
+	gotSel := applySelectionStyle(s, true)
+	if gotSel == "" || !strings.Contains(gotSel, s) {
+		t.Errorf("applySelectionStyle selected: got %q, want non-empty containing %q", gotSel, s)
+	}
+	gotUnsel := applySelectionStyle(s, false)
+	if gotUnsel != s {
+		t.Errorf("applySelectionStyle unselected: got %q, want %q", gotUnsel, s)
+	}
+}
+
 // ---------- gpuDescr ----------
 
 func TestGpuDescrApple(t *testing.T) {
@@ -299,6 +391,12 @@ func TestViewWithSize(t *testing.T) {
 	}
 	if got == "Detectando hardware…" {
 		t.Error("View() still shows loading with non-zero size")
+	}
+	if !strings.Contains(got, "Ollama Fit") {
+		t.Errorf("View() missing title, got %q", got)
+	}
+	if !strings.Contains(got, "✓") && !strings.Contains(got, "!") && !strings.Contains(got, "✗") {
+		t.Errorf("View() missing verdict glyphs, got %q", got)
 	}
 }
 
@@ -580,5 +678,95 @@ func TestViewEmptyFilter(t *testing.T) {
 	got := m.View()
 	if !strings.Contains(got, "sin resultados") {
 		t.Errorf("expected empty-result message in View(), got: %q", got)
+	}
+}
+
+// ---------- renderRow integration ----------
+
+func TestRenderRowGood(t *testing.T) {
+	m := newWithSize(hwNone(), makeResults(), 120, 40)
+	got := m.renderRow(m.all[0], false)
+	if !strings.Contains(got, "▎") {
+		t.Errorf("Good row missing gutter, got %q", got)
+	}
+	if !strings.Contains(got, "→") {
+		t.Errorf("Good row missing arrow, got %q", got)
+	}
+	if strings.Contains(got, "Va bien") {
+		t.Errorf("Good unselected row should not show status text, got %q", got)
+	}
+}
+
+func TestRenderRowTight(t *testing.T) {
+	m := newWithSize(hwNone(), makeResults(), 120, 40)
+	got := m.renderRow(m.all[1], false)
+	if !strings.Contains(got, "▎") {
+		t.Errorf("Tight row missing gutter, got %q", got)
+	}
+	if !strings.Contains(got, "→") {
+		t.Errorf("Tight row missing arrow, got %q", got)
+	}
+	if strings.Contains(got, "Justo") {
+		t.Errorf("Tight unselected row should not show status text, got %q", got)
+	}
+}
+
+func TestRenderRowNo(t *testing.T) {
+	m := newWithSize(hwNone(), makeResults(), 120, 40)
+	got := m.renderRow(m.all[2], false)
+	if !strings.Contains(got, "▎") {
+		t.Errorf("No row missing gutter, got %q", got)
+	}
+	if !strings.Contains(got, "→") {
+		t.Errorf("No row missing arrow, got %q", got)
+	}
+	if strings.Contains(got, "No cabe") {
+		t.Errorf("No unselected row should not show status text, got %q", got)
+	}
+}
+
+func TestRenderRowSelected(t *testing.T) {
+	m := newWithSize(hwNone(), makeResults(), 120, 40)
+	got := m.renderRow(m.all[0], true)
+	if !strings.Contains(got, "small:7b") {
+		t.Errorf("Selected row missing name, got %q", got)
+	}
+	if !strings.Contains(got, "Va bien") {
+		t.Errorf("Selected row missing status text, got %q", got)
+	}
+}
+
+// ---------- header / footer / columnHeader ----------
+
+func TestHeaderGlyphCounts(t *testing.T) {
+	m := newWithSize(hwNone(), makeResults(), 120, 40)
+	got := m.header()
+	if !strings.Contains(got, "3 modelos") {
+		t.Errorf("header missing model count, got %q", got)
+	}
+	if !strings.Contains(got, "✓") || !strings.Contains(got, "!") || !strings.Contains(got, "✗") {
+		t.Errorf("header missing verdict glyphs, got %q", got)
+	}
+	if strings.Contains(got, "● va bien") || strings.Contains(got, "● justo") || strings.Contains(got, "● no cabe") {
+		t.Errorf("header contains old legend, got %q", got)
+	}
+}
+
+func TestFooterNoLegend(t *testing.T) {
+	m := newWithSize(hwNone(), makeResults(), 120, 40)
+	got := m.footer()
+	if strings.Contains(got, "va bien") || strings.Contains(got, "justo") || strings.Contains(got, "no cabe") {
+		t.Errorf("footer contains legend text, got %q", got)
+	}
+}
+
+func TestColumnHeaderNoTamanoNecesita(t *testing.T) {
+	m := newWithSize(hwNone(), makeResults(), 120, 40)
+	got := m.columnHeader()
+	if strings.Contains(got, "TAMAÑO") || strings.Contains(got, "NECESITA") {
+		t.Errorf("column header contains old columns, got %q", got)
+	}
+	if !strings.Contains(got, "MEMORIA") {
+		t.Errorf("column header missing MEMORIA, got %q", got)
 	}
 }

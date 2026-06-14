@@ -24,15 +24,14 @@ var (
 	cSel   = lipgloss.Color("231")
 	cAcc   = lipgloss.Color("39")
 	cHdrBg = lipgloss.Color("236")
+	cSelBg = lipgloss.Color("237")
 
 	titleStyle   = lipgloss.NewStyle().Bold(true).Foreground(cSel).Background(cAcc)
+	selRowStyle  = lipgloss.NewStyle().Background(cSelBg)
 	hwStyle      = lipgloss.NewStyle().Foreground(cDim)
 	colHeadStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("250")).Background(cHdrBg)
 	footStyle    = lipgloss.NewStyle().Foreground(cDim)
 	dimStyle     = lipgloss.NewStyle().Foreground(cDim)
-
-	normGutter = "  "
-	selGutter  = lipgloss.NewStyle().Foreground(cAcc).Bold(true).Render("▌ ")
 )
 
 // anchos de columna
@@ -41,8 +40,7 @@ const (
 	wName    = 24
 	wParams  = 7
 	wQuant   = 10
-	wSize    = 9
-	wNeed    = 10
+	wMemory  = 17
 	wBackend = 12
 )
 
@@ -268,24 +266,21 @@ func (m Model) gpuDescr() string {
 
 func (m Model) header() string {
 	g, t, n := m.counts()
-	chip := func(c lipgloss.Color, k int) string {
-		return lipgloss.NewStyle().Foreground(c).Render(fmt.Sprintf("●%d", k))
-	}
-	line1 := titleStyle.Render(" Ollama Fit ") + "  " +
-		hwStyle.Render(fmt.Sprintf("%s/%s · %d modelos", m.hw.OS, m.hw.Arch, len(m.all))) + "   " +
-		chip(cGood, g) + " " + chip(cTight, t) + " " + chip(cNo, n)
+	line1 := titleStyle.Render(" Ollama Fit ") + " " +
+		hwStyle.Render(fmt.Sprintf("%d modelos", len(m.all))) + " " +
+		glyphCounts(g, t, n)
 	cpuLine := hwStyle.Render(fmt.Sprintf("CPU  %s · %d núcleos    RAM  %.1f GB",
 		m.hw.CPUModel, m.hw.CPUCores, m.hw.RAMGB))
 	gpuLine := hwStyle.Render("GPU  " + m.gpuDescr())
-	return line1 + "\n" + cpuLine + "\n" + gpuLine + "\n\n" + m.columnHeader()
+	return line1 + "\n" + cpuLine + "\n" + gpuLine + "\n" + m.columnHeader()
 }
 
 func cell(s string, w int) string { return lipgloss.NewStyle().Width(w).Render(s) }
 
 func (m Model) columnHeader() string {
-	body := normGutter +
+	body := gutterGlyph(cDim, false) + " " +
 		cell("ESTADO", wStatus) + cell("MODELO", wName) + cell("PARÁM", wParams) +
-		cell("CUANT", wQuant) + cell("TAMAÑO", wSize) + cell("NECESITA", wNeed) +
+		cell("CUANT", wQuant) + cell("MEMORIA", wMemory) +
 		cell("BACKEND", wBackend)
 	return colHeadStyle.Render(body)
 }
@@ -312,24 +307,51 @@ func statusColor(v eval.Verdict) lipgloss.Color {
 	}
 }
 
+func gutterGlyph(c lipgloss.Color, selected bool) string {
+	style := lipgloss.NewStyle().Foreground(c)
+	if selected {
+		style = style.Bold(true)
+	}
+	return style.Render("▎")
+}
+
+func arrowSignature(size, need float64, c lipgloss.Color) string {
+	return lipgloss.NewStyle().Foreground(c).Bold(true).Render(fmt.Sprintf("%.1f GB → %.1f GB", size, need))
+}
+
+func glyphCounts(g, t, n int) string {
+	return lipgloss.NewStyle().Foreground(cGood).Render(fmt.Sprintf("%d ✓", g)) + " " +
+		lipgloss.NewStyle().Foreground(cTight).Render(fmt.Sprintf("%d !", t)) + " " +
+		lipgloss.NewStyle().Foreground(cNo).Render(fmt.Sprintf("%d ✗", n))
+}
+
+func applySelectionStyle(s string, selected bool) string {
+	if selected {
+		return selRowStyle.Render(s)
+	}
+	return s
+}
+
 func (m Model) renderRow(r eval.Result, selected bool) string {
 	nameStyle := lipgloss.NewStyle().Foreground(cName)
 	if selected {
 		nameStyle = nameStyle.Foreground(cSel).Bold(true)
 	}
-	statusCell := cell(lipgloss.NewStyle().Foreground(statusColor(r.Verdict)).Bold(true).Render(statusText(r.Verdict)), wStatus)
-	row := statusCell +
+	var statusCell string
+	if selected {
+		statusCell = cell(lipgloss.NewStyle().Foreground(statusColor(r.Verdict)).Bold(true).Render(statusText(r.Verdict)), wStatus)
+	} else {
+		statusCell = cell("", wStatus)
+	}
+	arrow := arrowSignature(r.Model.SizeGB, r.NeedGB, statusColor(r.Verdict))
+	row := gutterGlyph(statusColor(r.Verdict), selected) + " " +
+		statusCell +
 		cell(nameStyle.Render(r.Model.Name), wName) +
 		cell(dimStyle.Render(r.Model.Params), wParams) +
 		cell(dimStyle.Render(r.Model.Quant), wQuant) +
-		cell(dimStyle.Render(fmt.Sprintf("%.1f GB", r.Model.SizeGB)), wSize) +
-		cell(dimStyle.Render(fmt.Sprintf("%.1f GB", r.NeedGB)), wNeed) +
+		cell(arrow, wMemory) +
 		cell(dimStyle.Render(r.Backend), wBackend)
-	gutter := normGutter
-	if selected {
-		gutter = selGutter
-	}
-	return gutter + row
+	return applySelectionStyle(row, selected)
 }
 
 func (m Model) listView(height int) string {
@@ -355,10 +377,6 @@ func (m Model) footer() string {
 	if m.searching {
 		return footStyle.Render(fmt.Sprintf(" buscar: %s_   (enter aplica · esc limpia)", m.search))
 	}
-	legend := lipgloss.NewStyle().Foreground(cGood).Render("● va bien") + "  " +
-		lipgloss.NewStyle().Foreground(cTight).Render("● justo") + "  " +
-		lipgloss.NewStyle().Foreground(cNo).Render("● no cabe")
-	keys := footStyle.Render(fmt.Sprintf("↑/↓ mover · pgup/pgdn · g/G inicio/fin · f filtro [%s] · / buscar · q salir",
+	return footStyle.Render(fmt.Sprintf("↑/↓ mover · pgup/pgdn · g/G inicio/fin · f filtro [%s] · / buscar · q salir",
 		m.filter.label()))
-	return legend + "\n" + keys
 }
