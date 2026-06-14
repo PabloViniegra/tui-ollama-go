@@ -9,9 +9,9 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/termenv"
 
-	"ollama-fit/internal/catalog"
-	"ollama-fit/internal/eval"
-	"ollama-fit/internal/hardware"
+	"github.com/PabloViniegra/tui-ollama-go/internal/catalog"
+	"github.com/PabloViniegra/tui-ollama-go/internal/eval"
+	"github.com/PabloViniegra/tui-ollama-go/internal/hardware"
 )
 
 // helpers

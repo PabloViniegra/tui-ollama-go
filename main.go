@@ -9,10 +9,10 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"ollama-fit/internal/catalog"
-	"ollama-fit/internal/eval"
-	"ollama-fit/internal/hardware"
-	"ollama-fit/internal/tui"
+	"github.com/PabloViniegra/tui-ollama-go/internal/catalog"
+	"github.com/PabloViniegra/tui-ollama-go/internal/eval"
+	"github.com/PabloViniegra/tui-ollama-go/internal/hardware"
+	"github.com/PabloViniegra/tui-ollama-go/internal/tui"
 )
 
 func main() {
