@@ -94,7 +94,7 @@ func Detect(ctx context.Context) Info {
 	}
 
 	runner := execRunner{}
-	info.GPU = detectGPU(runner)
+	info.GPU = detectGPU(ctx, runner)
 
 	if info.OS == "darwin" && info.Arch == "arm64" {
 		info.AppleUnified = true
@@ -142,7 +142,7 @@ func appleChip(runner CommandRunner) string {
 
 // Detector abstracts a single GPU-discovery strategy.
 type Detector interface {
-	Detect(runner CommandRunner) (GPU, bool)
+	Detect(ctx context.Context, runner CommandRunner) (GPU, bool)
 }
 
 type nvidiaDetector struct{}
@@ -162,20 +162,20 @@ var detectorChain = []struct {
 }
 
 // detectGPU prueba detectores en orden de fiabilidad y cae a CPU si nada responde.
-func detectGPU(runner CommandRunner) GPU {
+func detectGPU(ctx context.Context, runner CommandRunner) GPU {
 	for _, d := range detectorChain {
 		if !d.match() {
 			continue
 		}
-		if g, ok := d.det.Detect(runner); ok {
+		if g, ok := d.det.Detect(ctx, runner); ok {
 			return g
 		}
 	}
 	return GPU{Kind: GPUKindNone}
 }
 
-func (nvidiaDetector) Detect(runner CommandRunner) (GPU, bool) {
-	out, err := runner.Run(context.Background(), "nvidia-smi",
+func (nvidiaDetector) Detect(ctx context.Context, runner CommandRunner) (GPU, bool) {
+	out, err := runner.Run(ctx, "nvidia-smi",
 		"--query-gpu=name,memory.total", "--format=csv,noheader,nounits")
 	if err != nil {
 		return GPU{}, false
@@ -200,8 +200,8 @@ func (nvidiaDetector) Detect(runner CommandRunner) (GPU, bool) {
 	return GPU{}, false
 }
 
-func (macIntelDetector) Detect(runner CommandRunner) (GPU, bool) {
-	out, err := runner.Run(context.Background(), "system_profiler", "-json", "SPDisplaysDataType")
+func (macIntelDetector) Detect(ctx context.Context, runner CommandRunner) (GPU, bool) {
+	out, err := runner.Run(ctx, "system_profiler", "-json", "SPDisplaysDataType")
 	if err != nil {
 		return GPU{Kind: GPUKindNone}, false
 	}
@@ -244,8 +244,8 @@ func parseAppleVRAM(s string) float64 {
 	return val // se asume GB
 }
 
-func (amdLinuxDetector) Detect(runner CommandRunner) (GPU, bool) {
-	out, err := runner.Run(context.Background(), "rocm-smi", "--showmeminfo", "vram", "--json")
+func (amdLinuxDetector) Detect(ctx context.Context, runner CommandRunner) (GPU, bool) {
+	out, err := runner.Run(ctx, "rocm-smi", "--showmeminfo", "vram", "--json")
 	if err != nil {
 		return GPU{}, false
 	}
@@ -265,9 +265,9 @@ func (amdLinuxDetector) Detect(runner CommandRunner) (GPU, bool) {
 	return GPU{}, false
 }
 
-func (windowsDetector) Detect(runner CommandRunner) (GPU, bool) {
+func (windowsDetector) Detect(ctx context.Context, runner CommandRunner) (GPU, bool) {
 	ps := `Get-CimInstance Win32_VideoController | Select-Object Name,AdapterRAM | ConvertTo-Json`
-	out, err := runner.Run(context.Background(), "powershell", "-NoProfile", "-Command", ps)
+	out, err := runner.Run(ctx, "powershell", "-NoProfile", "-Command", ps)
 	if err != nil {
 		return GPU{}, false
 	}

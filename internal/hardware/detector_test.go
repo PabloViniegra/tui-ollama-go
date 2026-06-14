@@ -38,7 +38,7 @@ func TestNvidiaDetectorHappyPath(t *testing.T) {
 			cmdKey("nvidia-smi", "--query-gpu=name,memory.total", "--format=csv,noheader,nounits"): "NVIDIA GeForce RTX 4070, 12288",
 		},
 	}
-	g, ok := nvidiaDetector{}.Detect(f)
+	g, ok := nvidiaDetector{}.Detect(context.Background(), f)
 	if !ok {
 		t.Fatalf("expected detection to succeed")
 	}
@@ -59,7 +59,7 @@ func TestNvidiaDetectorMultiLine(t *testing.T) {
 			cmdKey("nvidia-smi", "--query-gpu=name,memory.total", "--format=csv,noheader,nounits"): "NVIDIA GeForce RTX 4090, 24576\nNVIDIA GeForce RTX 4070, 12288",
 		},
 	}
-	g, ok := nvidiaDetector{}.Detect(f)
+	g, ok := nvidiaDetector{}.Detect(context.Background(), f)
 	if !ok {
 		t.Fatalf("expected detection to succeed")
 	}
@@ -77,7 +77,7 @@ func TestNvidiaDetectorCommandNotFound(t *testing.T) {
 			cmdKey("nvidia-smi", "--query-gpu=name,memory.total", "--format=csv,noheader,nounits"): errors.New("command not found"),
 		},
 	}
-	_, ok := nvidiaDetector{}.Detect(f)
+	_, ok := nvidiaDetector{}.Detect(context.Background(), f)
 	if ok {
 		t.Fatalf("expected detection to fail")
 	}
@@ -89,7 +89,7 @@ func TestNvidiaDetectorMalformedOutput(t *testing.T) {
 			cmdKey("nvidia-smi", "--query-gpu=name,memory.total", "--format=csv,noheader,nounits"): "bad output",
 		},
 	}
-	_, ok := nvidiaDetector{}.Detect(f)
+	_, ok := nvidiaDetector{}.Detect(context.Background(), f)
 	if ok {
 		t.Fatalf("expected detection to fail with malformed output")
 	}
@@ -101,7 +101,7 @@ func TestNvidiaDetectorEmptyOutput(t *testing.T) {
 			cmdKey("nvidia-smi", "--query-gpu=name,memory.total", "--format=csv,noheader,nounits"): "",
 		},
 	}
-	_, ok := nvidiaDetector{}.Detect(f)
+	_, ok := nvidiaDetector{}.Detect(context.Background(), f)
 	if ok {
 		t.Fatalf("expected detection to fail with empty output")
 	}
@@ -113,7 +113,7 @@ func TestAmdLinuxDetectorHappyPath(t *testing.T) {
 			cmdKey("rocm-smi", "--showmeminfo", "vram", "--json"): `{"card0":{"VRAM Total Memory":"8589934592"}}`,
 		},
 	}
-	g, ok := amdLinuxDetector{}.Detect(f)
+	g, ok := amdLinuxDetector{}.Detect(context.Background(), f)
 	if !ok {
 		t.Fatalf("expected detection to succeed")
 	}
@@ -134,7 +134,7 @@ func TestAmdLinuxDetectorCommandNotFound(t *testing.T) {
 			cmdKey("rocm-smi", "--showmeminfo", "vram", "--json"): errors.New("command not found"),
 		},
 	}
-	_, ok := amdLinuxDetector{}.Detect(f)
+	_, ok := amdLinuxDetector{}.Detect(context.Background(), f)
 	if ok {
 		t.Fatalf("expected detection to fail")
 	}
@@ -146,7 +146,7 @@ func TestAmdLinuxDetectorMalformedJSON(t *testing.T) {
 			cmdKey("rocm-smi", "--showmeminfo", "vram", "--json"): "not json",
 		},
 	}
-	_, ok := amdLinuxDetector{}.Detect(f)
+	_, ok := amdLinuxDetector{}.Detect(context.Background(), f)
 	if ok {
 		t.Fatalf("expected detection to fail with malformed JSON")
 	}
@@ -158,7 +158,7 @@ func TestMacIntelDetectorHappyPath(t *testing.T) {
 			cmdKey("system_profiler", "-json", "SPDisplaysDataType"): `{"SPDisplaysDataType":[{"sppci_model":"Intel Iris Plus Graphics","spdisplays_vram":"1536 MB"}]}`,
 		},
 	}
-	g, ok := macIntelDetector{}.Detect(f)
+	g, ok := macIntelDetector{}.Detect(context.Background(), f)
 	if !ok {
 		t.Fatalf("expected detection to succeed")
 	}
@@ -179,7 +179,7 @@ func TestMacIntelDetectorAMDGPU(t *testing.T) {
 			cmdKey("system_profiler", "-json", "SPDisplaysDataType"): `{"SPDisplaysDataType":[{"sppci_model":"AMD Radeon Pro 5500M","spdisplays_vram":"4 GB"}]}`,
 		},
 	}
-	g, ok := macIntelDetector{}.Detect(f)
+	g, ok := macIntelDetector{}.Detect(context.Background(), f)
 	if !ok {
 		t.Fatalf("expected detection to succeed")
 	}
@@ -194,7 +194,7 @@ func TestMacIntelDetectorFallbackVRAMShared(t *testing.T) {
 			cmdKey("system_profiler", "-json", "SPDisplaysDataType"): `{"SPDisplaysDataType":[{"sppci_model":"Intel UHD","spdisplays_vram":"","spdisplays_vram_shared":"2048 MB"}]}`,
 		},
 	}
-	g, ok := macIntelDetector{}.Detect(f)
+	g, ok := macIntelDetector{}.Detect(context.Background(), f)
 	if !ok {
 		t.Fatalf("expected detection to succeed")
 	}
@@ -209,7 +209,7 @@ func TestMacIntelDetectorCommandNotFound(t *testing.T) {
 			cmdKey("system_profiler", "-json", "SPDisplaysDataType"): errors.New("command not found"),
 		},
 	}
-	_, ok := macIntelDetector{}.Detect(f)
+	_, ok := macIntelDetector{}.Detect(context.Background(), f)
 	if ok {
 		t.Fatalf("expected detection to fail")
 	}
@@ -221,7 +221,7 @@ func TestMacIntelDetectorEmptyDisplays(t *testing.T) {
 			cmdKey("system_profiler", "-json", "SPDisplaysDataType"): `{"SPDisplaysDataType":[]}`,
 		},
 	}
-	_, ok := macIntelDetector{}.Detect(f)
+	_, ok := macIntelDetector{}.Detect(context.Background(), f)
 	if ok {
 		t.Fatalf("expected detection to fail with empty displays")
 	}
@@ -233,7 +233,7 @@ func TestWindowsDetectorHappyPath(t *testing.T) {
 			cmdKey("powershell", "-NoProfile", "-Command", `Get-CimInstance Win32_VideoController | Select-Object Name,AdapterRAM | ConvertTo-Json`): `[{"Name":"NVIDIA GeForce GTX 1660","AdapterRAM":6442450944}]`,
 		},
 	}
-	g, ok := windowsDetector{}.Detect(f)
+	g, ok := windowsDetector{}.Detect(context.Background(), f)
 	if !ok {
 		t.Fatalf("expected detection to succeed")
 	}
@@ -254,7 +254,7 @@ func TestWindowsDetectorSingleObject(t *testing.T) {
 			cmdKey("powershell", "-NoProfile", "-Command", `Get-CimInstance Win32_VideoController | Select-Object Name,AdapterRAM | ConvertTo-Json`): `{"Name":"AMD Radeon RX 580","AdapterRAM":8589934592}`,
 		},
 	}
-	g, ok := windowsDetector{}.Detect(f)
+	g, ok := windowsDetector{}.Detect(context.Background(), f)
 	if !ok {
 		t.Fatalf("expected detection to succeed")
 	}
@@ -272,7 +272,7 @@ func TestWindowsDetectorUnknownVRAM(t *testing.T) {
 			cmdKey("powershell", "-NoProfile", "-Command", `Get-CimInstance Win32_VideoController | Select-Object Name,AdapterRAM | ConvertTo-Json`): `{"Name":"Intel UHD Graphics","AdapterRAM":0}`,
 		},
 	}
-	g, ok := windowsDetector{}.Detect(f)
+	g, ok := windowsDetector{}.Detect(context.Background(), f)
 	if !ok {
 		t.Fatalf("expected detection to succeed")
 	}
@@ -290,7 +290,7 @@ func TestWindowsDetectorCommandNotFound(t *testing.T) {
 			cmdKey("powershell", "-NoProfile", "-Command", `Get-CimInstance Win32_VideoController | Select-Object Name,AdapterRAM | ConvertTo-Json`): errors.New("command not found"),
 		},
 	}
-	_, ok := windowsDetector{}.Detect(f)
+	_, ok := windowsDetector{}.Detect(context.Background(), f)
 	if ok {
 		t.Fatalf("expected detection to fail")
 	}
@@ -302,7 +302,7 @@ func TestWindowsDetectorMalformedJSON(t *testing.T) {
 			cmdKey("powershell", "-NoProfile", "-Command", `Get-CimInstance Win32_VideoController | Select-Object Name,AdapterRAM | ConvertTo-Json`): "not json",
 		},
 	}
-	_, ok := windowsDetector{}.Detect(f)
+	_, ok := windowsDetector{}.Detect(context.Background(), f)
 	if ok {
 		t.Fatalf("expected detection to fail with malformed JSON")
 	}
@@ -314,7 +314,7 @@ func TestDetectGPUWithFakeRunner(t *testing.T) {
 			cmdKey("nvidia-smi", "--query-gpu=name,memory.total", "--format=csv,noheader,nounits"): "NVIDIA RTX 3080, 10240",
 		},
 	}
-	g := detectGPU(f)
+	g := detectGPU(context.Background(), f)
 	if g.Kind != "nvidia" {
 		t.Fatalf("Kind = %q, want nvidia", g.Kind)
 	}
@@ -325,7 +325,7 @@ func TestDetectGPUWithFakeRunner(t *testing.T) {
 
 func TestDetectGPUNoGPU(t *testing.T) {
 	f := &fakeRunnerV2{}
-	g := detectGPU(f)
+	g := detectGPU(context.Background(), f)
 	if g.Kind != GPUKindNone {
 		(t.Fatalf)("Kind = %q, want %q", g.Kind, GPUKindNone)
 	}

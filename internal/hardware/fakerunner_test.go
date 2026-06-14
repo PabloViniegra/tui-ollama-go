@@ -77,7 +77,7 @@ func TestNvidiaDetectorWithFakeRunner(t *testing.T) {
 			"nvidia-smi --query-gpu=name,memory.total": "NVIDIA GeForce RTX 4070, 12288",
 		},
 	}
-	g, ok := nvidiaDetector{}.Detect(f)
+	g, ok := nvidiaDetector{}.Detect(context.Background(), f)
 	if !ok {
 		(t.Fatalf)("expected detection to succeed")
 	}
@@ -98,7 +98,7 @@ func TestNvidiaDetectorErrorPropagation(t *testing.T) {
 			"nvidia-smi --query-gpu=name,memory.total": errors.New("command not found"),
 		},
 	}
-	_, ok := nvidiaDetector{}.Detect(f)
+	_, ok := nvidiaDetector{}.Detect(context.Background(), f)
 	if ok {
 		(t.Fatalf)("expected detection to fail")
 	}
