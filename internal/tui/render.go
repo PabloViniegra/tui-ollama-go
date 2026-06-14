@@ -13,7 +13,7 @@ import (
 
 func (m Model) View() string {
 	if m.width == 0 || m.height == 0 {
-		return "Detectando hardware…"
+		return MsgDetectingHardware
 	}
 	return m.header() + "\n" + m.listView(m.listHeight()) + "\n" + m.footer()
 }

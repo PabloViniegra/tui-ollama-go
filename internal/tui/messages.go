@@ -21,4 +21,7 @@ const (
 	msgFooterHelp   = "↑/↓ mover · pgup/pgdn · g/G inicio/fin · f filtro [%s] · / buscar · q salir"
 	msgCPUHeader    = "CPU  %s · %d núcleos    RAM  %.1f GB"
 	msgGPUHeader    = "GPU  %s"
+
+	// MsgDetectingHardware se muestra antes de que la TUI tenga dimensiones de terminal.
+	MsgDetectingHardware = "Detectando hardware…"
 )

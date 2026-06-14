@@ -27,7 +27,7 @@ func runMain(args []string) int {
 		return 1
 	}
 
-	fmt.Fprintln(os.Stderr, "Detectando hardware…")
+	fmt.Fprintln(os.Stderr, tui.MsgDetectingHardware)
 	hw := hardware.Detect(context.Background())
 
 	models, err := catalog.Fetch(context.Background(), *refresh, *offline, func(s string) {

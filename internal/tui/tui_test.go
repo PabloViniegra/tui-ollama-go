@@ -378,7 +378,7 @@ func TestGpuDescrUnknownVRAM(t *testing.T) {
 func TestViewZeroSize(t *testing.T) {
 	m := New(hwNone(), makeResults())
 	got := m.View()
-	if got != "Detectando hardware…" {
+	if got != MsgDetectingHardware {
 		t.Errorf("View() with zero size = %q", got)
 	}
 }
@@ -389,7 +389,7 @@ func TestViewWithSize(t *testing.T) {
 	if got == "" {
 		t.Error("View() returned empty string")
 	}
-	if got == "Detectando hardware…" {
+	if got == MsgDetectingHardware {
 		t.Error("View() still shows loading with non-zero size")
 	}
 	if !strings.Contains(got, "Ollama Fit") {
