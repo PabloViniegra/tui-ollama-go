@@ -232,6 +232,29 @@ smoke-test en CI:
 ollama-fit doctor || echo "faltan herramientas en este runner"
 ```
 
+#### Modelos locales instalados (`local`)
+
+Para ver qué modelos tenés instalados con `ollama list` y cómo les va en
+tu hardware, sin abrir la TUI:
+
+```bash
+ollama-fit local
+```
+
+Lee la salida de `ollama list`, parsea los nombres, los cruza con el
+catálogo (cae al embebido si no hay red o caché) y evalúa cada uno con la
+misma heurística que la TUI:
+
+```
+NAME                    SIZE      VERDICT   NEED      BACKEND
+qwen2.5-coder:7b        4.7 GB    Good      5.6 GB    CPU
+deepseek-coder-v2:16b   8.9 GB    Tight     10.7 GB   CPU
+```
+
+Las variantes `*-cloud` (sin tamaño local) y los modelos que no estén en
+el catálogo se filtran. Si te falta alguno, corré `ollama-fit --refresh`
+para actualizar el catálogo desde ollama.com.
+
 ### Ideas para iterar
 
 - Leer también `…/tags` para obtener todas las cuantizaciones

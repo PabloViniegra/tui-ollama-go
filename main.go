@@ -18,6 +18,7 @@ import (
 	"github.com/PabloViniegra/tui-ollama-go/internal/doctor"
 	"github.com/PabloViniegra/tui-ollama-go/internal/eval"
 	"github.com/PabloViniegra/tui-ollama-go/internal/hardware"
+	"github.com/PabloViniegra/tui-ollama-go/internal/locallist"
 	"github.com/PabloViniegra/tui-ollama-go/internal/tui"
 )
 
@@ -43,6 +44,9 @@ func runMain(args []string) int {
 	}
 	if len(args) > 1 && args[1] == "doctor" {
 		return runDoctor(execDoctorRunner{})
+	}
+	if len(args) > 1 && args[1] == "local" {
+		return runLocal(args[2:])
 	}
 	fs := flag.NewFlagSet(args[0], flag.ContinueOnError)
 	refresh := fs.Bool("refresh", false, "ignora la caché y vuelve a scrapear ollama.com")
@@ -270,4 +274,57 @@ func runDoctor(runner doctor.CommandRunner) int {
 		return 1
 	}
 	return 0
+}
+
+// execLocalRunner implementa locallist.CommandRunner usando os/exec con un
+// timeout moderado (8s). `ollama list` puede tardar al escanear muchos modelos.
+type execLocalRunner struct{}
+
+func (execLocalRunner) Run(ctx context.Context, name string, args ...string) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, 8*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, name, args...).Output()
+	if err != nil {
+		return "", fmt.Errorf("exec %s: %w", name, err)
+	}
+	return string(out), nil
+}
+
+// runLocal implementa el subcomando `local`: lista los modelos instalados
+// con `ollama list` y los cruza con el catálogo para mostrar veredicto.
+// Siempre devuelve exit 0 (es informativo, no smoke-test).
+func runLocal(args []string) int {
+	fs := flag.NewFlagSet("ollama-fit local", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	if err := fs.Parse(args); err != nil {
+		fmt.Fprintln(os.Stderr, "uso: ollama-fit local")
+		return 3
+	}
+	if fs.NArg() != 0 {
+		fmt.Fprintln(os.Stderr, "uso: ollama-fit local")
+		return 3
+	}
+
+	hw := hardware.Detect(context.Background())
+	models, err := catalog.Fetch(context.Background(), false, false, nil)
+	if err != nil || len(models) == 0 {
+		models = catalog.Models() // fallback offline
+	}
+	out, err := localReport(context.Background(), execLocalRunner{}, hw, models)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		return 3
+	}
+	fmt.Print(out)
+	return 0
+}
+
+// localReport corre ollama list, evalúa contra el catálogo, y formatea.
+// Es el core testeable de runLocal; runLocal solo agrega detección + fetch.
+func localReport(ctx context.Context, runner locallist.CommandRunner, hw hardware.Info, models []catalog.Model) (string, error) {
+	results, err := locallist.EvaluateLocal(ctx, runner, hw, models)
+	if err != nil {
+		return "", err
+	}
+	return locallist.Format(results), nil
 }

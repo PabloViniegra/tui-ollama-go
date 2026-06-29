@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"runtime"
 	"strings"
@@ -446,5 +447,81 @@ func TestRunMain_DoctorDispatch(t *testing.T) {
 	code := runMain([]string{"ollama-fit", "doctor"})
 	if code != 0 && code != 1 {
 		t.Errorf("runMain(doctor) = %d, want 0 o 1 (subcomando doctor corrió)", code)
+	}
+}
+
+// -- local -----------------------------------------------------------
+
+type localFakeRunner struct {
+	output map[string]string
+	err    map[string]error
+}
+
+func (f *localFakeRunner) Run(_ context.Context, name string, args ...string) (string, error) {
+	key := name + " " + strings.Join(args, " ")
+	if e, ok := f.err[key]; ok {
+		return "", e
+	}
+	if out, ok := f.output[key]; ok {
+		return out, nil
+	}
+	return "", errors.New("command not found: " + key)
+}
+
+func TestLocalReport_OneLocal_Verdict(t *testing.T) {
+	r := &localFakeRunner{
+		output: map[string]string{
+			"ollama list": "NAME                     ID              SIZE      MODIFIED\n" +
+				"qwen2.5:7b              dae161e27b0e    4.7 GB    6 months ago\n",
+		},
+	}
+	hw := hardware.Info{RAMGB: 32}
+	models := catalog.Models()
+
+	out, err := localReport(context.Background(), r, hw, models)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, want := range []string{"qwen2.5:7b", "4.7 GB", "VERDICT"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("localReport() missing %q\n---\n%s", want, out)
+		}
+	}
+}
+
+func TestLocalReport_EmptyList(t *testing.T) {
+	r := &localFakeRunner{
+		output: map[string]string{
+			"ollama list": "NAME                     ID              SIZE      MODIFIED\n",
+		},
+	}
+
+	out, err := localReport(context.Background(), r, hardware.Info{RAMGB: 32}, catalog.Models())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(strings.ToLower(out), "no ") && !strings.Contains(strings.ToLower(out), "ning") {
+		t.Errorf("expected empty-list message, got %q", out)
+	}
+}
+
+func TestLocalReport_RunnerError(t *testing.T) {
+	r := &localFakeRunner{
+		err: map[string]error{"ollama list": errors.New("ollama not in PATH")},
+	}
+
+	_, err := localReport(context.Background(), r, hardware.Info{RAMGB: 32}, nil)
+	if err == nil {
+		t.Fatal("expected error from runner, got nil")
+	}
+}
+
+func TestRunMain_LocalDispatch(t *testing.T) {
+	// Smoke: el dispatch cae al branch `local` antes del FlagSet.
+	// Si ollama no está instalado, devuelve error → exit 3 (runLocal lo
+	// maneja). Si está, devuelve 0.
+	code := runMain([]string{"ollama-fit", "local"})
+	if code != 0 && code != 3 {
+		t.Errorf("runMain(local) = %d, want 0 (OK) o 3 (ollama ausente)", code)
 	}
 }
