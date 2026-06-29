@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/PabloViniegra/tui-ollama-go/fit_output.schema.json",
+  "title": "ollama-fit fit output",
+  "description": "Output shape of 'ollama-fit fit --json'. Stable contract; consumers can validate against this schema.",
+  "type": "object",
+  "required": ["verdict", "backend", "need_gb", "available_gb", "reason", "model"],
+  "additionalProperties": false,
+  "properties": {
+    "verdict": {
+      "type": "string",
+      "enum": ["good", "tight", "no"],
+      "description": "Lowercase verdict: good/tight/no."
+    },
+    "backend": {
+      "type": "string",
+      "description": "Inference backend, e.g. 'CPU', 'GPU Metal', 'GPU CUDA', '—' when no fit."
+    },
+    "need_gb": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Estimated memory needed (GB). Includes ~20% overhead for KV-cache and runtime."
+    },
+    "available_gb": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Accelerated memory available (GB). VRAM for discrete GPU, Apple Silicon unified slice, or full RAM."
+    },
+    "reason": {
+      "type": "string",
+      "description": "Human-readable explanation of the verdict."
+    },
+    "model": {
+      "type": "object",
+      "required": ["name", "family", "params", "quant", "size_gb"],
+      "additionalProperties": false,
+      "properties": {
+        "name":   {"type": "string", "description": "Modelo+tag, p.ej. 'llama3.1:8b'."},
+        "family": {"type": "string", "description": "Familia sin tag, p.ej. 'llama3.1'."},
+        "params": {"type": "string", "description": "Cantidad de parámetros, p.ej. '8B'."},
+        "quant":  {"type": "string", "description": "Cuantización, p.ej. 'Q4_K_M' o 'default'."},
+        "size_gb": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Tamaño real reportado por ollama.com (GB)."
+        }
+      }
+    }
+  }
+}

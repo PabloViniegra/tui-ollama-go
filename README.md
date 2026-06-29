@@ -215,6 +215,19 @@ quieres entender por qué.
 
 `--json` y `--explain` son mutuamente excluyentes.
 
+#### Esquema del JSON (`--print-schema`)
+
+Para integración con scripts o `jq`, el contrato del JSON de `--json` está
+documentado como JSON Schema (draft 2020-12):
+
+```bash
+ollama-fit fit --print-schema > fit_output.schema.json
+```
+
+El archivo describe `verdict` (enum `good|tight|no`), `backend`, `need_gb`,
+`available_gb`, `reason` y `model.{name,family,params,quant,size_gb}`.
+`--print-schema` es mutuamente excluyente con `--json` y `--explain`.
+
 Para que el binario funcione desde cualquier directorio, sigue la sección
 [Instalación](#instalación) más arriba (el binario canónico se llama
 `ollama-fit`) y asegúrate de que `$GOPATH/bin` (o `$HOME/go/bin`) esté en tu

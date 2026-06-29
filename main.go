@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	_ "embed"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -22,6 +23,9 @@ import (
 	"github.com/PabloViniegra/tui-ollama-go/internal/locallist"
 	"github.com/PabloViniegra/tui-ollama-go/internal/tui"
 )
+
+//go:embed assets/fit_output.schema.json
+var fitOutputSchema []byte
 
 // Estas variables se sobreescriben en build con -ldflags "-X main.version=...".
 // `.goreleaser.yaml` las inyecta en cada release.
@@ -89,6 +93,12 @@ func runFit(args []string, src *loader.Source) int {
 		return 3
 	}
 
+	if opts.PrintSchema {
+		// --print-schema bypasses todo: no detecta hw, no scrapea, no evalúa.
+		fmt.Println(string(fitOutputSchema))
+		return 0
+	}
+
 	hw := src.Detect(context.Background())
 	models, fetchErr := src.Fetch(context.Background(), false, false, nil)
 	if len(models) == 0 {
@@ -111,9 +121,10 @@ func runFit(args []string, src *loader.Source) int {
 
 // fitOpts es el resultado de parsear los flags del subcomando `fit`.
 type fitOpts struct {
-	Model     string
-	AsJSON    bool
-	AsExplain bool
+	Model       string
+	AsJSON      bool
+	AsExplain   bool
+	PrintSchema bool
 }
 
 // parseFitFlags valida y extrae los flags de `fit`. Errores de uso y de
@@ -123,16 +134,33 @@ func parseFitFlags(args []string) (fitOpts, error) {
 	fs.SetOutput(io.Discard) // errores se propagan por la tupla de retorno
 	asJSON := fs.Bool("json", false, "emitir el veredicto como JSON de una línea")
 	asExplain := fs.Bool("explain", false, "mostrar el cálculo paso a paso")
+	printSchema := fs.Bool("print-schema", false, "imprime el JSON Schema del output --json y sale")
 	if err := fs.Parse(args); err != nil {
 		return fitOpts{}, err
 	}
-	if fs.NArg() != 1 {
+	if !*printSchema && fs.NArg() != 1 {
 		return fitOpts{}, fmt.Errorf("uso: ollama-fit fit [--json|--explain] <modelo>")
 	}
-	if *asJSON && *asExplain {
-		return fitOpts{}, fmt.Errorf("--json y --explain son mutuamente excluyentes")
+	// Combinaciones inválidas: --json|--explain|--print-schema son exclusivos entre sí.
+	active := 0
+	if *asJSON {
+		active++
 	}
-	return fitOpts{Model: fs.Arg(0), AsJSON: *asJSON, AsExplain: *asExplain}, nil
+	if *asExplain {
+		active++
+	}
+	if *printSchema {
+		active++
+	}
+	if active > 1 {
+		return fitOpts{}, fmt.Errorf("--json, --explain y --print-schema son mutuamente excluyentes")
+	}
+	return fitOpts{
+		Model:       fs.Arg(0),
+		AsJSON:      *asJSON,
+		AsExplain:   *asExplain,
+		PrintSchema: *printSchema,
+	}, nil
 }
 
 // findModel busca un modelo por nombre, case-insensitive y exacto.

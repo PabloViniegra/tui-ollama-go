@@ -604,3 +604,83 @@ func TestRunLocal_RunnerError(t *testing.T) {
 		t.Errorf("exit code = %d, want 3 (runner falló)", code)
 	}
 }
+
+// -- fit --print-schema ----------------------------------------------
+
+func TestFitOutputSchema_ValidJSON(t *testing.T) {
+	if !json.Valid(fitOutputSchema) {
+		t.Errorf("fitOutputSchema is not valid JSON:\n%s", fitOutputSchema)
+	}
+}
+
+func TestFitOutputSchema_HasRequiredFields(t *testing.T) {
+	var raw map[string]any
+	if err := json.Unmarshal(fitOutputSchema, &raw); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	required, ok := raw["required"].([]any)
+	if !ok {
+		t.Fatal("schema has no 'required' array")
+	}
+	want := map[string]bool{
+		"verdict":      false,
+		"backend":      false,
+		"need_gb":      false,
+		"available_gb": false,
+		"reason":       false,
+		"model":        false,
+	}
+	for _, r := range required {
+		if s, ok := r.(string); ok {
+			if _, exists := want[s]; exists {
+				want[s] = true
+			}
+		}
+	}
+	for name, found := range want {
+		if !found {
+			t.Errorf("schema missing required field %q", name)
+		}
+	}
+}
+
+func TestParseFitFlags_PrintSchema(t *testing.T) {
+	opts, err := parseFitFlags([]string{"--print-schema", "qwen2.5:7b"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !opts.PrintSchema {
+		t.Errorf("opts.PrintSchema = false, want true")
+	}
+	if opts.Model != "qwen2.5:7b" {
+		t.Errorf("opts.Model = %q, want qwen2.5:7b", opts.Model)
+	}
+}
+
+func TestParseFitFlags_PrintSchemaVsJSON(t *testing.T) {
+	// --print-schema y --json son mutuamente excluyentes.
+	_, err := parseFitFlags([]string{"--print-schema", "--json", "x"})
+	if err == nil {
+		t.Error("expected error when combining --print-schema with --json")
+	}
+}
+
+func TestParseFitFlags_PrintSchemaVsExplain(t *testing.T) {
+	_, err := parseFitFlags([]string{"--print-schema", "--explain", "x"})
+	if err == nil {
+		t.Error("expected error when combining --print-schema with --explain")
+	}
+}
+
+func TestRunFit_PrintSchema(t *testing.T) {
+	// --print-schema bypasses detección + catálogo; no necesita src.
+	cases := [][]string{
+		{"--print-schema"},                  // sin modelo
+		{"--print-schema", "ignored-model"}, // con modelo (ignorado)
+	}
+	for _, args := range cases {
+		if code := runFit(args, fixedLoader(0, nil)); code != 0 {
+			t.Errorf("runFit(%v) = %d, want 0", args, code)
+		}
+	}
+}
