@@ -95,14 +95,20 @@ de GoReleaser inyectan automáticamente la versión, el commit y la fecha
 
 ## Controles
 
-| Tecla            | Acción                                          |
-|------------------|-------------------------------------------------|
-| `↑`/`↓` o `k`/`j`| mover el cursor                                 |
-| `pgup`/`pgdn`    | página arriba/abajo                             |
-| `g` / `G`        | inicio / fin                                    |
-| `f`              | ciclar el filtro (todos / va bien / justo / no) |
-| `/`              | buscar por nombre (intro aplica, esc limpia)    |
-| `q` / `esc`      | salir                                           |
+| Tecla            | Acción                                                  |
+|------------------|---------------------------------------------------------|
+| `↑`/`↓` o `k`/`j`| mover el cursor                                         |
+| `pgup`/`pgdn`    | página arriba/abajo                                     |
+| `g` / `G`        | inicio / fin                                            |
+| `f`              | ciclar el filtro (todos / va bien / justo / no)         |
+| `/`              | buscar por nombre (intro aplica, esc limpia; búsqueda difusa — ver abajo) |
+| `q` / `esc`      | salir                                                   |
+
+La búsqueda con `/` es **difusa** (estilo VS Code): los caracteres que
+escribas deben aparecer en el nombre del modelo en orden, no necesariamente
+contiguos. Por ejemplo, `qwn25` matchea `qwen2.5:7b`, y `llama8b` matchea
+`llama3.1:8b`. Es estrictamente más permisiva que una búsqueda por
+subcadena, así que ningún match existente se pierde al actualizar.
 
 ## Cómo se decide el veredicto
 

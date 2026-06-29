@@ -121,7 +121,7 @@ func (m *Model) applyFilter() {
 				continue
 			}
 		}
-		if q != "" && !strings.Contains(strings.ToLower(r.Model.Name), q) {
+		if !fuzzyMatch(q, r.Model.Name) {
 			continue
 		}
 		out = append(out, r)
@@ -131,6 +131,28 @@ func (m *Model) applyFilter() {
 		m.cursor = max(0, len(m.view)-1)
 	}
 	m.clampOffset()
+}
+
+// fuzzyMatch devuelve true si todos los chars de query aparecen en target en
+// orden (subsequence match, estilo VS Code/Sublime). Es case-insensitive.
+// Query vacío matchea todo. Subsequence es estrictamente más permisivo que
+// substring: cero matches se pierden al cambiar de substr a fuzzy.
+func fuzzyMatch(query, target string) bool {
+	if query == "" {
+		return true
+	}
+	if len(query) > len(target) {
+		return false
+	}
+	q := strings.ToLower(query)
+	t := strings.ToLower(target)
+	i := 0
+	for j := 0; j < len(t) && i < len(q); j++ {
+		if t[j] == q[i] {
+			i++
+		}
+	}
+	return i == len(q)
 }
 
 func (m Model) listHeight() int {

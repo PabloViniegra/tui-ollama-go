@@ -1076,3 +1076,132 @@ func TestNextKeyClearsMessage(t *testing.T) {
 		t.Errorf("message should be cleared by next key, got %q", m2.message)
 	}
 }
+
+// ---------- fuzzy search ----------
+
+// fuzzyResults construye un set de modelos pensado para testear fuzzy match.
+// Contiene typos potenciales (qwen/qe2), caracteres extra (gemma3:4b) y casos
+// donde el orden de caracteres en el nombre es relevante.
+func fuzzyResults() []eval.Result {
+	return []eval.Result{
+		{Model: catalog.Model{Name: "qwen2.5:7b", Family: "qwen2.5", Params: "7B", Quant: "Q4_K_M", SizeGB: 4.7}, Verdict: eval.Good},
+		{Model: catalog.Model{Name: "llama3.1:8b", Family: "llama3.1", Params: "8B", Quant: "Q4_K_M", SizeGB: 4.9}, Verdict: eval.Good},
+		{Model: catalog.Model{Name: "deepseek-r1:70b", Family: "deepseek-r1", Params: "70B", Quant: "Q4_K_M", SizeGB: 43}, Verdict: eval.No},
+		{Model: catalog.Model{Name: "gemma3:4b", Family: "gemma3", Params: "4B", Quant: "Q4_K_M", SizeGB: 3.3}, Verdict: eval.Good},
+	}
+}
+
+func TestApplyFilterFuzzy_SubstringStillWorks(t *testing.T) {
+	// Backcompat: queries que ya funcionaban con substring siguen funcionando.
+	m := New(hwNone(), fuzzyResults())
+	m.filter = fAll
+	m.search = "llama3.1"
+	m.applyFilter()
+	if len(m.view) != 1 || m.view[0].Model.Name != "llama3.1:8b" {
+		t.Errorf("substring backcompat broken: %+v", m.view)
+	}
+}
+
+func TestApplyFilterFuzzy_TypoSubsequence(t *testing.T) {
+	// "qwn25" → no es substring de "qwen2.5:7b" pero los chars están en orden.
+	m := New(hwNone(), fuzzyResults())
+	m.filter = fAll
+	m.search = "qwn25"
+	m.applyFilter()
+	if len(m.view) != 1 || m.view[0].Model.Name != "qwen2.5:7b" {
+		t.Errorf("fuzzy(typo) failed: got %+v, want qwen2.5:7b", m.view)
+	}
+}
+
+func TestApplyFilterFuzzy_SkipsCharacters(t *testing.T) {
+	// "llama8b" → matchea "llama3.1:8b" saltando "3.1:".
+	m := New(hwNone(), fuzzyResults())
+	m.filter = fAll
+	m.search = "llama8b"
+	m.applyFilter()
+	if len(m.view) != 1 || m.view[0].Model.Name != "llama3.1:8b" {
+		t.Errorf("fuzzy(skips) failed: got %+v, want llama3.1:8b", m.view)
+	}
+}
+
+func TestApplyFilterFuzzy_CaseInsensitive(t *testing.T) {
+	m := New(hwNone(), fuzzyResults())
+	m.filter = fAll
+	m.search = "QWEN"
+	m.applyFilter()
+	if len(m.view) != 1 || m.view[0].Model.Name != "qwen2.5:7b" {
+		t.Errorf("fuzzy(case) failed: got %+v, want qwen2.5:7b", m.view)
+	}
+}
+
+func TestApplyFilterFuzzy_OrderMatters(t *testing.T) {
+	// "52qwen" → los chars no están en ese orden en ningún target.
+	m := New(hwNone(), fuzzyResults())
+	m.filter = fAll
+	m.search = "52qwen"
+	m.applyFilter()
+	if len(m.view) != 0 {
+		t.Errorf("fuzzy(order) failed: got %+v, want 0 results", m.view)
+	}
+}
+
+func TestApplyFilterFuzzy_EmptyQuery(t *testing.T) {
+	m := New(hwNone(), fuzzyResults())
+	m.filter = fAll
+	m.search = ""
+	m.applyFilter()
+	if len(m.view) != len(fuzzyResults()) {
+		t.Errorf("fuzzy(empty) failed: got %d, want %d", len(m.view), len(fuzzyResults()))
+	}
+}
+
+func TestApplyFilterFuzzy_ComposesWithFilter(t *testing.T) {
+	// Fuzzy + filtro de veredicto compone correctamente.
+	m := New(hwNone(), fuzzyResults())
+	m.filter = fNo // solo "deepseek-r1:70b" + todo fuzzy matchea
+	m.search = "deep"
+	m.applyFilter()
+	if len(m.view) != 1 || m.view[0].Model.Name != "deepseek-r1:70b" {
+		t.Errorf("fuzzy+filter failed: got %+v, want deepseek-r1:70b", m.view)
+	}
+}
+
+func TestApplyFilterFuzzy_ComposesWithFilterRejects(t *testing.T) {
+	// Fuzzy matchea varios pero el filtro de verdict deja solo uno.
+	m := New(hwNone(), fuzzyResults())
+	m.filter = fGood // descartar deepseek-r1:70b (No)
+	m.search = "b"   // matchea todos los nombres (subsequence de "b")
+	m.applyFilter()
+	// Espera: small/medium/good, no deepseek (es No).
+	for _, r := range m.view {
+		if r.Verdict == eval.No {
+			t.Errorf("fuzzy+filter leaked No verdict: %+v", r)
+		}
+	}
+}
+
+// ---------- fuzzyMatch (pure) ----------
+
+func TestFuzzyMatch(t *testing.T) {
+	cases := []struct {
+		query, target string
+		want          bool
+	}{
+		{"", "anything", true},
+		{"abc", "abc", true},
+		{"abc", "axbxcx", true},
+		{"abc", "cab", false},       // orden invertido
+		{"abc", "acb", false},       // orden invertido
+		{"abc", "ab", false},        // más corto que query
+		{"QWE", "qwen2.5:7b", true}, // case-insensitive
+		{"q.w.e.n", "qwen", false},  // el '.' no aparece en el target
+		{"aa", "a", false},          // más chars que disponibles
+	}
+	for _, c := range cases {
+		t.Run(c.query+"|"+c.target, func(t *testing.T) {
+			if got := fuzzyMatch(c.query, c.target); got != c.want {
+				t.Errorf("fuzzyMatch(%q, %q) = %v, want %v", c.query, c.target, got, c.want)
+			}
+		})
+	}
+}
