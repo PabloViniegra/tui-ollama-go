@@ -80,6 +80,19 @@ go run .           # primera vez: extrae el catálogo de ollama.com (unos segund
 > tenía red para descargar los módulos). `go mod tidy` resolverá las
 > dependencias.
 
+### Versión
+
+Para consultar la versión del binario:
+
+```bash
+./ollama-fit --version    # o -V
+# ollama-fit dev (linux/amd64, go1.23.2, commit=none, built=unknown)
+```
+
+En builds locales sin ldflags verás `dev`; los binarios publicados a través
+de GoReleaser inyectan automáticamente la versión, el commit y la fecha
+(véase `.goreleaser.yaml`).
+
 ## Controles
 
 | Tecla            | Acción                                          |

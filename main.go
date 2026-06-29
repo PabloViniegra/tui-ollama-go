@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"runtime"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -17,11 +18,23 @@ import (
 	"github.com/PabloViniegra/tui-ollama-go/internal/tui"
 )
 
+// Estas variables se sobreescriben en build con -ldflags "-X main.version=...".
+// `.goreleaser.yaml` las inyecta en cada release.
+var (
+	version = "dev"
+	commit  = "none"
+	date    = "unknown"
+)
+
 func main() {
 	os.Exit(runMain(os.Args))
 }
 
 func runMain(args []string) int {
+	if len(args) > 1 && (args[1] == "--version" || args[1] == "-V") {
+		fmt.Println(printVersion())
+		return 0
+	}
 	if len(args) > 1 && args[1] == "fit" {
 		return runFit(args[2:])
 	}
@@ -217,4 +230,12 @@ func hardwareSummary(hw hardware.Info) string {
 	default:
 		return fmt.Sprintf("CPU, %.1f GB RAM", hw.RAMGB)
 	}
+}
+
+// printVersion devuelve la cadena que se imprime con --version / -V.
+// El valor por defecto "dev" se reemplaza en build con -ldflags
+// "-X main.version=<v> -X main.commit=<sha> -X main.date=<ts>".
+func printVersion() string {
+	return fmt.Sprintf("ollama-fit %s (%s/%s, %s, commit=%s, built=%s)",
+		version, runtime.GOOS, runtime.GOARCH, runtime.Version(), commit, date)
 }

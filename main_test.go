@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -336,5 +337,49 @@ func TestParseFitFlags_InvalidFlag(t *testing.T) {
 	_, err := parseFitFlags([]string{"--no-existe", "llama3.1:8b"})
 	if err == nil {
 		t.Fatal("expected unknown-flag error, got nil")
+	}
+}
+
+// -- --version / -V --------------------------------------------------
+
+func TestPrintVersion_ContainsFields(t *testing.T) {
+	out := printVersion()
+
+	for _, want := range []string{
+		"ollama-fit",
+		version, // valor por defecto "dev"
+		runtime.GOOS,
+		runtime.GOARCH,
+		runtime.Version(), // ya incluye prefijo "go", p.ej. "go1.23.2"
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("printVersion() = %q, missing %q", out, want)
+		}
+	}
+}
+
+func TestRunMain_VersionFlag(t *testing.T) {
+	code := runMain([]string{"ollama-fit", "--version"})
+	if code != 0 {
+		t.Errorf("exit code = %d, want 0", code)
+	}
+}
+
+func TestRunMain_ShortVersionFlag(t *testing.T) {
+	code := runMain([]string{"ollama-fit", "-V"})
+	if code != 0 {
+		t.Errorf("exit code = %d, want 0", code)
+	}
+}
+
+func TestRunMain_VersionFlagBeforeSubcommand(t *testing.T) {
+	// --version debe tener precedencia sobre el dispatch a TUI o fit.
+	for _, args := range [][]string{
+		{"ollama-fit", "--version"},
+		{"ollama-fit", "-V"},
+	} {
+		if code := runMain(args); code != 0 {
+			t.Errorf("runMain(%v) = %d, want 0", args, code)
+		}
 	}
 }
