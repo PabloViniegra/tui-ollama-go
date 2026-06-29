@@ -76,6 +76,52 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 
 **These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.
 
+## Architecture
+
+**Pattern:** Modular CLI Monolith — `cmd/` package extraction  
+**Decision date:** 2026-06-29  
+**Status:** Accepted  
+**ADR:** /docs/adr/0002-cmd-package-extraction.md
+
+### Guiding principles
+
+- `main.go` is an entry point only — no logic, no types, no formatters
+- One file per subcommand in `internal/cmd/`
+- `loader.Source` is the only infra abstraction needed — do not add more ports without a concrete second adapter
+- Inner packages (`catalog`, `hardware`, `eval`, `tui`, `loader`, `doctor`, `locallist`) never import `internal/cmd`
+
+### Folder structure
+
+```
+main.go                 # os.Exit(cmd.Run(os.Args))
+internal/
+  cmd/
+    root.go             # Run() dispatcher + TUI default flow
+    fit.go              # fit subcommand + output formatting
+    doctor.go           # doctor subcommand + execDoctorRunner adapter
+    local.go            # local subcommand + execLocalRunner adapter
+    version.go          # printVersion
+  catalog/
+  hardware/
+  eval/
+  tui/
+  loader/               # loader.Source: hardware.Detect + catalog.Fetch ports
+  doctor/
+  locallist/
+```
+
+### Rules for contributors
+
+- `main` imports `internal/cmd` only
+- `internal/cmd` may import any `internal/*` package
+- No `internal/*` package imports `internal/cmd` — compile error if violated
+- New subcommand = one new file in `internal/cmd/` + one case in `root.go`
+- Formatters and adapter structs for a subcommand live in that subcommand's file, not in a separate `format/` or `adapters/` package
+
+### Why we chose this
+
+`main.go` had grown to 330 lines mixing routing, adapters, formatters, and orchestration. Extracting to `internal/cmd/` restores `main.go` as a pure entry point with zero logic, matching Go idioms for CLI tools and making each subcommand independently testable.
+
 ## Agent skills
 
 ### Issue tracker

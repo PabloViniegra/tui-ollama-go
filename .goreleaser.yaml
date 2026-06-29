@@ -32,6 +32,30 @@ archives:
           - zip
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
 
+brews:
+  - name: ollama-fit
+    repository:
+      owner: PabloViniegra
+      name: homebrew-ollama-fit
+      branch: main
+    directory: Formula
+    homepage: "https://github.com/PabloViniegra/tui-ollama-go"
+    description: "CLI to check if a model fits your hardware"
+    license: "MIT"
+    test: |
+      assert_match version.to_s, shell_output("#{bin}/ollama-fit --version")
+
+scoops:
+  - name: ollama-fit
+    repository:
+      owner: PabloViniegra
+      name: scoop-ollama-fit
+      branch: main
+    directory: bucket
+    homepage: "https://github.com/PabloViniegra/tui-ollama-go"
+    description: "CLI to check if a model fits your hardware"
+    license: "MIT"
+
 checksum:
   name_template: "checksums.txt"
   algorithm: sha256
