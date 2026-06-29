@@ -13,6 +13,7 @@ import (
 	"github.com/PabloViniegra/tui-ollama-go/internal/catalog"
 	"github.com/PabloViniegra/tui-ollama-go/internal/eval"
 	"github.com/PabloViniegra/tui-ollama-go/internal/hardware"
+	"github.com/PabloViniegra/tui-ollama-go/internal/loader"
 )
 
 func TestCatalogFetchCancellation(t *testing.T) {
@@ -523,5 +524,83 @@ func TestRunMain_LocalDispatch(t *testing.T) {
 	code := runMain([]string{"ollama-fit", "local"})
 	if code != 0 && code != 3 {
 		t.Errorf("runMain(local) = %d, want 0 (OK) o 3 (ollama ausente)", code)
+	}
+}
+
+// -- runFit/runLocal con loader inyectado -----------------------------
+
+// fixedLoader devuelve un Source cableado a fixtures en memoria (sin red,
+// sin syscalls de hardware). ideal para tests de runFit/runLocal.
+func fixedLoader(ramGB float64, models []catalog.Model) *loader.Source {
+	return &loader.Source{
+		Detect: func(_ context.Context) hardware.Info {
+			return hardware.Info{RAMGB: ramGB}
+		},
+		Fetch: func(_ context.Context, _, _ bool, _ func(string)) ([]catalog.Model, error) {
+			return models, nil
+		},
+	}
+}
+
+func TestRunFit_HappyPath(t *testing.T) {
+	src := fixedLoader(32, []catalog.Model{
+		{Name: "qwen2.5:7b", Family: "qwen2.5", Params: "7B", Quant: "Q4_K_M", SizeGB: 4.7},
+	})
+
+	if code := runFit([]string{"qwen2.5:7b"}, src); code != 0 {
+		t.Errorf("exit code = %d, want 0 (Good)", code)
+	}
+}
+
+func TestRunFit_NotFound(t *testing.T) {
+	src := fixedLoader(32, catalog.Models())
+
+	if code := runFit([]string{"no-existe-99b"}, src); code != 3 {
+		t.Errorf("exit code = %d, want 3 (model not found)", code)
+	}
+}
+
+func TestRunFit_NoFit(t *testing.T) {
+	src := fixedLoader(16, []catalog.Model{
+		{Name: "huge:70b", Family: "huge", Params: "70B", Quant: "Q4_K_M", SizeGB: 70},
+	})
+
+	if code := runFit([]string{"huge:70b"}, src); code != 2 {
+		t.Errorf("exit code = %d, want 2 (No)", code)
+	}
+}
+
+func TestRunLocal_EmptyArgs_OK(t *testing.T) {
+	src := fixedLoader(32, []catalog.Model{
+		{Name: "qwen2.5:7b", Family: "qwen2.5", Params: "7B", Quant: "Q4_K_M", SizeGB: 4.7},
+	})
+	runner := &localFakeRunner{
+		output: map[string]string{
+			"ollama list": "NAME       SIZE\nqwen2.5:7b 4.7 GB\n",
+		},
+	}
+
+	if code := runLocal([]string{}, src, runner); code != 0 {
+		t.Errorf("exit code = %d, want 0", code)
+	}
+}
+
+func TestRunLocal_RejectsArgs(t *testing.T) {
+	src := fixedLoader(32, nil)
+	runner := &localFakeRunner{}
+
+	if code := runLocal([]string{"foo"}, src, runner); code != 3 {
+		t.Errorf("exit code = %d, want 3 (args inválidos)", code)
+	}
+}
+
+func TestRunLocal_RunnerError(t *testing.T) {
+	src := fixedLoader(32, catalog.Models())
+	runner := &localFakeRunner{
+		err: map[string]error{"ollama list": errors.New("ollama not in PATH")},
+	}
+
+	if code := runLocal([]string{}, src, runner); code != 3 {
+		t.Errorf("exit code = %d, want 3 (runner falló)", code)
 	}
 }

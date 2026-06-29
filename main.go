@@ -18,6 +18,7 @@ import (
 	"github.com/PabloViniegra/tui-ollama-go/internal/doctor"
 	"github.com/PabloViniegra/tui-ollama-go/internal/eval"
 	"github.com/PabloViniegra/tui-ollama-go/internal/hardware"
+	"github.com/PabloViniegra/tui-ollama-go/internal/loader"
 	"github.com/PabloViniegra/tui-ollama-go/internal/locallist"
 	"github.com/PabloViniegra/tui-ollama-go/internal/tui"
 )
@@ -39,14 +40,15 @@ func runMain(args []string) int {
 		fmt.Println(printVersion())
 		return 0
 	}
+	src := loader.Default()
 	if len(args) > 1 && args[1] == "fit" {
-		return runFit(args[2:])
+		return runFit(args[2:], src)
 	}
 	if len(args) > 1 && args[1] == "doctor" {
 		return runDoctor(execDoctorRunner{})
 	}
 	if len(args) > 1 && args[1] == "local" {
-		return runLocal(args[2:])
+		return runLocal(args[2:], src, execLocalRunner{})
 	}
 	fs := flag.NewFlagSet(args[0], flag.ContinueOnError)
 	refresh := fs.Bool("refresh", false, "ignora la caché y vuelve a scrapear ollama.com")
@@ -56,9 +58,9 @@ func runMain(args []string) int {
 		return 1
 	}
 
-	loader := func() (hardware.Info, []eval.Result, error) {
-		hw := hardware.Detect(context.Background())
-		models, err := catalog.Fetch(context.Background(), *refresh, *offline, nil)
+	tuiLoader := func() (hardware.Info, []eval.Result, error) {
+		hw := src.Detect(context.Background())
+		models, err := src.Fetch(context.Background(), *refresh, *offline, nil)
 		if err != nil {
 			return hw, nil, err
 		}
@@ -69,7 +71,7 @@ func runMain(args []string) int {
 		return hw, results, nil
 	}
 
-	p := tea.NewProgram(tui.NewAsync(loader), tea.WithAltScreen())
+	p := tea.NewProgram(tui.NewAsync(tuiLoader), tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		return 1
@@ -80,15 +82,15 @@ func runMain(args []string) int {
 // runFit implementa el subcomando `fit <modelo>`: detecta hardware, busca el
 // modelo en el catálogo, evalúa con la misma heurística que el TUI e imprime el
 // veredicto. No abre la TUI.
-func runFit(args []string) int {
+func runFit(args []string, src *loader.Source) int {
 	opts, err := parseFitFlags(args)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		return 3
 	}
 
-	hw := hardware.Detect(context.Background())
-	models, fetchErr := catalog.Fetch(context.Background(), false, false, nil)
+	hw := src.Detect(context.Background())
+	models, fetchErr := src.Fetch(context.Background(), false, false, nil)
 	if len(models) == 0 {
 		if fetchErr != nil {
 			fmt.Fprintf(os.Stderr, "error cargando catálogo: %v\n", fetchErr)
@@ -293,7 +295,7 @@ func (execLocalRunner) Run(ctx context.Context, name string, args ...string) (st
 // runLocal implementa el subcomando `local`: lista los modelos instalados
 // con `ollama list` y los cruza con el catálogo para mostrar veredicto.
 // Siempre devuelve exit 0 (es informativo, no smoke-test).
-func runLocal(args []string) int {
+func runLocal(args []string, src *loader.Source, runner locallist.CommandRunner) int {
 	fs := flag.NewFlagSet("ollama-fit local", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	if err := fs.Parse(args); err != nil {
@@ -305,12 +307,12 @@ func runLocal(args []string) int {
 		return 3
 	}
 
-	hw := hardware.Detect(context.Background())
-	models, err := catalog.Fetch(context.Background(), false, false, nil)
+	hw := src.Detect(context.Background())
+	models, err := src.Fetch(context.Background(), false, false, nil)
 	if err != nil || len(models) == 0 {
 		models = catalog.Models() // fallback offline
 	}
-	out, err := localReport(context.Background(), execLocalRunner{}, hw, models)
+	out, err := localReport(context.Background(), runner, hw, models)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		return 3

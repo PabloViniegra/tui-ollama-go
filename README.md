@@ -265,10 +265,12 @@ para actualizar el catálogo desde ollama.com.
 
 - Leer también `…/tags` para obtener todas las cuantizaciones
   (q4_K_M, q8_0, fp16…).
-- **Modelos locales**: añadir un modo que lea `ollama list` y marque lo
-  instalado.
 - **Benchmark real**: ejecutar un prompt corto en `ollama run` y medir
   tokens/s.
+
+> Ya implementado: el subcomando `ollama-fit local` cubre la idea de
+> "modelos locales" leyendo `ollama list` y cruzándolo con el catálogo
+> (véase la sección "Modelos locales instalados" arriba).
 
 ## Estructura
 
@@ -281,5 +283,8 @@ ollama-fit/
     ├── catalog/scrape.go       # extracción en vivo de ollama.com + caché
     ├── catalog/catalog.go      # catálogo embebido de respaldo (offline)
     ├── eval/eval.go            # heurística de clasificación
+    ├── loader/loader.go        # inyección de hardware.Detect + catalog.Fetch
+    ├── doctor/doctor.go        # auditoría de herramientas del sistema
+    ├── locallist/locallist.go  # cruza 'ollama list' con el catálogo
     └── tui/tui.go              # interfaz Bubble Tea
 ```
