@@ -7,12 +7,15 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"runtime"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/PabloViniegra/tui-ollama-go/internal/catalog"
+	"github.com/PabloViniegra/tui-ollama-go/internal/doctor"
 	"github.com/PabloViniegra/tui-ollama-go/internal/eval"
 	"github.com/PabloViniegra/tui-ollama-go/internal/hardware"
 	"github.com/PabloViniegra/tui-ollama-go/internal/tui"
@@ -37,6 +40,9 @@ func runMain(args []string) int {
 	}
 	if len(args) > 1 && args[1] == "fit" {
 		return runFit(args[2:])
+	}
+	if len(args) > 1 && args[1] == "doctor" {
+		return runDoctor(execDoctorRunner{})
 	}
 	fs := flag.NewFlagSet(args[0], flag.ContinueOnError)
 	refresh := fs.Bool("refresh", false, "ignora la caché y vuelve a scrapear ollama.com")
@@ -238,4 +244,30 @@ func hardwareSummary(hw hardware.Info) string {
 func printVersion() string {
 	return fmt.Sprintf("ollama-fit %s (%s/%s, %s, commit=%s, built=%s)",
 		version, runtime.GOOS, runtime.GOARCH, runtime.Version(), commit, date)
+}
+
+// execDoctorRunner implementa doctor.CommandRunner usando os/exec con un
+// timeout corto. Es el adapter de producción; los tests inyectan uno propio.
+type execDoctorRunner struct{}
+
+func (execDoctorRunner) Run(ctx context.Context, name string, args ...string) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, 4*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, name, args...).Output()
+	if err != nil {
+		return "", fmt.Errorf("exec %s: %w", name, err)
+	}
+	return string(out), nil
+}
+
+// runDoctor implementa el subcomando `doctor`: audita herramientas del
+// sistema. Imprime tabla y devuelve exit 0 si todas están presentes,
+// exit 1 si falta alguna (útil para CI smoke-tests).
+func runDoctor(runner doctor.CommandRunner) int {
+	checks := doctor.Run(context.Background(), runner)
+	fmt.Print(doctor.Format(checks))
+	if doctor.AnyMissing(checks) {
+		return 1
+	}
+	return 0
 }

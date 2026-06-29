@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"runtime"
 	"strings"
 	"testing"
@@ -381,5 +382,69 @@ func TestRunMain_VersionFlagBeforeSubcommand(t *testing.T) {
 		if code := runMain(args); code != 0 {
 			t.Errorf("runMain(%v) = %d, want 0", args, code)
 		}
+	}
+}
+
+// -- doctor ---------------------------------------------------------
+
+type doctorFakeRunner struct {
+	output map[string]string
+	err    map[string]error
+}
+
+func (f *doctorFakeRunner) Run(_ context.Context, name string, args ...string) (string, error) {
+	key := name + " " + strings.Join(args, " ")
+	if e, ok := f.err[key]; ok {
+		return "", e
+	}
+	if out, ok := f.output[key]; ok {
+		return out, nil
+	}
+	return "", fmt.Errorf("command not found: %s", key)
+}
+
+func TestRunDoctor_AllPresent(t *testing.T) {
+	r := &doctorFakeRunner{
+		output: map[string]string{
+			"nvidia-smi --version":               "NVIDIA-SMI 535.86.10",
+			"ollama --version":                   "ollama version 0.5.7",
+			"sysctl -n machdep.cpu.brand_string": "Apple M3 Pro",
+			"uname -mrs":                         "Linux 6.5.0 x86_64",
+			"rocm-smi --version":                 "ROCm 6.0.0",
+			"sw_vers -productVersion":            "14.0",
+		},
+	}
+
+	if got := runDoctor(r); got != 0 {
+		t.Errorf("runDoctor(all-present) = %d, want 0", got)
+	}
+}
+
+func TestRunDoctor_OneMissing(t *testing.T) {
+	r := &doctorFakeRunner{
+		output: map[string]string{
+			"ollama --version":                   "ollama version 0.5.7",
+			"sysctl -n machdep.cpu.brand_string": "Apple M3 Pro",
+			"uname -mrs":                         "Linux 6.5.0 x86_64",
+			"sw_vers -productVersion":            "14.0",
+			// nvidia-smi y rocm-smi faltan → missing
+		},
+	}
+
+	if got := runDoctor(r); got != 1 {
+		t.Errorf("runDoctor(one-missing) = %d, want 1", got)
+	}
+}
+
+func TestRunMain_DoctorDispatch(t *testing.T) {
+	// El dispatch de "doctor" debe entrar antes del FlagSet.
+	// No se puede probar end-to-end sin shell tools, pero verificamos que
+	// el branch existe: si pasás `doctor` con un argumento basura, runMain
+	// no debería caer al flagset (que sí rechaza args desconocidas).
+	// El smoke-test usa el runner real; en CI sin tools devuelve 1, lo cual
+	// confirma que entró al branch de doctor y NO al flagset.
+	code := runMain([]string{"ollama-fit", "doctor"})
+	if code != 0 && code != 1 {
+		t.Errorf("runMain(doctor) = %d, want 0 o 1 (subcomando doctor corrió)", code)
 	}
 }

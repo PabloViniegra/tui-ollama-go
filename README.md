@@ -214,6 +214,24 @@ Para que el binario funcione desde cualquier directorio, sigue la sección
 `ollama-fit`) y asegúrate de que `$GOPATH/bin` (o `$HOME/go/bin`) esté en tu
 `PATH`.
 
+#### Diagnóstico del sistema (`doctor`)
+
+Para auditar qué herramientas del sistema están disponibles y qué versión
+tienen, sin abrir la TUI:
+
+```bash
+ollama-fit doctor
+```
+
+Imprime una tabla con las tools relevantes (`nvidia-smi`, `rocm-smi`,
+`ollama`, `sysctl`, `uname`, `sw_vers`) y su estado (`ok` o `missing`). Sale
+con código `0` si todas están presentes y `1` si falta alguna — útil como
+smoke-test en CI:
+
+```bash
+ollama-fit doctor || echo "faltan herramientas en este runner"
+```
+
 ### Ideas para iterar
 
 - Leer también `…/tags` para obtener todas las cuantizaciones
