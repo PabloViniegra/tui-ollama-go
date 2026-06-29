@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -56,16 +58,11 @@ func runMain(args []string) int {
 // modelo en el catálogo, evalúa con la misma heurística que el TUI e imprime el
 // veredicto. No abre la TUI.
 func runFit(args []string) int {
-	fs := flag.NewFlagSet("ollama-fit fit", flag.ContinueOnError)
-	fs.SetOutput(os.Stderr)
-	if err := fs.Parse(args); err != nil {
+	opts, err := parseFitFlags(args)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
 		return 3
 	}
-	if fs.NArg() != 1 {
-		fmt.Fprintf(os.Stderr, "uso: ollama-fit fit <modelo>\n")
-		return 3
-	}
-	name := fs.Arg(0)
 
 	hw := hardware.Detect(context.Background())
 	models, fetchErr := catalog.Fetch(context.Background(), false, false, nil)
@@ -77,18 +74,40 @@ func runFit(args []string) int {
 		}
 		return 3
 	}
-	mdl, ok := findModel(models, name)
+	mdl, ok := findModel(models, opts.Model)
 	if !ok {
-		fmt.Fprintf(os.Stderr, "unknown model %q — corré `ollama-fit --refresh` para actualizar el catálogo\n", name)
+		fmt.Fprintf(os.Stderr, "unknown model %q — corré `ollama-fit --refresh` para actualizar el catálogo\n", opts.Model)
 		return 3
 	}
-	r := eval.Evaluate(hw, mdl)
-	available := availableGB(hw)
-	fmt.Printf("%s → %s\n", r.Model.Name, r.Verdict)
-	fmt.Printf("  backend : %s\n", r.Backend)
-	fmt.Printf("  reason  : %s\n", r.Reason)
-	fmt.Printf("  need    : %.1f GB / available %.1f GB\n", r.NeedGB, available)
-	return verdictExitCode(r.Verdict)
+	out, code := fitReport(hw, mdl, opts.AsJSON, opts.AsExplain)
+	fmt.Println(out)
+	return code
+}
+
+// fitOpts es el resultado de parsear los flags del subcomando `fit`.
+type fitOpts struct {
+	Model     string
+	AsJSON    bool
+	AsExplain bool
+}
+
+// parseFitFlags valida y extrae los flags de `fit`. Errores de uso y de
+// combinación inválida devuelven error (no tocan stderr; el caller decide).
+func parseFitFlags(args []string) (fitOpts, error) {
+	fs := flag.NewFlagSet("ollama-fit fit", flag.ContinueOnError)
+	fs.SetOutput(io.Discard) // errores se propagan por la tupla de retorno
+	asJSON := fs.Bool("json", false, "emitir el veredicto como JSON de una línea")
+	asExplain := fs.Bool("explain", false, "mostrar el cálculo paso a paso")
+	if err := fs.Parse(args); err != nil {
+		return fitOpts{}, err
+	}
+	if fs.NArg() != 1 {
+		return fitOpts{}, fmt.Errorf("uso: ollama-fit fit [--json|--explain] <modelo>")
+	}
+	if *asJSON && *asExplain {
+		return fitOpts{}, fmt.Errorf("--json y --explain son mutuamente excluyentes")
+	}
+	return fitOpts{Model: fs.Arg(0), AsJSON: *asJSON, AsExplain: *asExplain}, nil
 }
 
 // findModel busca un modelo por nombre, case-insensitive y exacto.
@@ -126,5 +145,76 @@ func verdictExitCode(v eval.Verdict) int {
 		return 2
 	default:
 		return 3
+	}
+}
+
+// fitOutput es la forma estable del veredicto para consumidores externos
+// (scripts CI, jq, etc.). Los verbos del campo Verdict van en minúsculas para
+// ser estables ante cambios de idioma del TUI.
+type fitOutput struct {
+	Verdict     string        `json:"verdict"`
+	Backend     string        `json:"backend"`
+	NeedGB      float64       `json:"need_gb"`
+	AvailableGB float64       `json:"available_gb"`
+	Reason      string        `json:"reason"`
+	Model       catalog.Model `json:"model"`
+}
+
+// fitReport evalúa el modelo y devuelve la salida formateada (texto, JSON o
+// explicación detallada) junto al exit code correspondiente al veredicto.
+// Si ambos asJSON y asExplain son true, tiene precedencia asExplain (no son
+// combinables — se valida antes en parseFitFlags).
+func fitReport(hw hardware.Info, mdl catalog.Model, asJSON, asExplain bool) (string, int) {
+	r := eval.Evaluate(hw, mdl)
+	available := availableGB(hw)
+	code := verdictExitCode(r.Verdict)
+
+	switch {
+	case asExplain:
+		return explainReport(hw, mdl, r, available), code
+	case asJSON:
+		payload := fitOutput{
+			Verdict:     strings.ToLower(r.Verdict.String()),
+			Backend:     r.Backend,
+			NeedGB:      r.NeedGB,
+			AvailableGB: available,
+			Reason:      r.Reason,
+			Model:       mdl,
+		}
+		b, err := json.Marshal(payload)
+		if err != nil {
+			return "", 3
+		}
+		return string(b), code
+	}
+	text := fmt.Sprintf("%s → %s\n  backend : %s\n  reason  : %s\n  need    : %.1f GB / available %.1f GB\n",
+		r.Model.Name, r.Verdict, r.Backend, r.Reason, r.NeedGB, available)
+	return text, code
+}
+
+// explainReport describe el cálculo paso a paso para que un humano entienda
+// por qué el veredicto es el que es.
+func explainReport(hw hardware.Info, mdl catalog.Model, r eval.Result, available float64) string {
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "Model:     %s (%s, %s, %s)\n", mdl.Name, mdl.Family, mdl.Params, mdl.Quant)
+	fmt.Fprintf(&sb, "Size:      %.1f GB\n", mdl.SizeGB)
+	fmt.Fprintf(&sb, "Need:      %.2f GB  (size × 1.2 overhead)\n", r.NeedGB) // 1.2 = eval.overhead
+	fmt.Fprintf(&sb, "Available: %.2f GB  (%s)\n", available, hardwareSummary(hw))
+	fmt.Fprintf(&sb, "Backend:   %s\n", r.Backend)
+	fmt.Fprintf(&sb, "Rule:      %s\n", r.Reason)
+	fmt.Fprintf(&sb, "Verdict:   %s\n", r.Verdict)
+	return sb.String()
+}
+
+// hardwareSummary describe de dónde sale la memoria "acelerada".
+func hardwareSummary(hw hardware.Info) string {
+	switch {
+	case hw.GPU.VRAMGB > 0:
+		return fmt.Sprintf("GPU %s, %.1f GB VRAM", strings.ToUpper(hw.GPU.Kind.String()), hw.GPU.VRAMGB)
+	case hw.AppleUnified:
+		return fmt.Sprintf("Apple Silicon unified, %.1f GB usable (%.0f%% de %.1f GB RAM)",
+			eval.AppleGPUFraction*hw.RAMGB, eval.AppleGPUFraction*100, hw.RAMGB)
+	default:
+		return fmt.Sprintf("CPU, %.1f GB RAM", hw.RAMGB)
 	}
 }
