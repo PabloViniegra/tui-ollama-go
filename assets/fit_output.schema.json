@@ -19,7 +19,7 @@
     "need_gb": {
       "type": "number",
       "minimum": 0,
-      "description": "Estimated memory needed (GB). Includes ~20% overhead for KV-cache and runtime."
+      "description": "Estimated memory needed (GB). Without context, uses the size-based heuristic; with context, sums installed weights and an FP16 KV-cache estimate."
     },
     "available_gb": {
       "type": "number",
@@ -29,6 +29,21 @@
     "reason": {
       "type": "string",
       "description": "Human-readable explanation of the verdict."
+    },
+    "context_tokens": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Requested context window. Present when --context is used."
+    },
+    "weights_gb": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Installed model size reported by Ollama, in GiB. Present when --context is used."
+    },
+    "kv_cache_gb": {
+      "type": "number",
+      "minimum": 0,
+      "description": "KV-cache estimate from Ollama architecture metadata, assuming FP16. Present when --context is used."
     },
     "model": {
       "type": "object",
@@ -42,7 +57,7 @@
         "size_gb": {
           "type": "number",
           "minimum": 0,
-          "description": "Tamaño real reportado por ollama.com (GB)."
+          "description": "Tamaño del catálogo o tamaño instalado reportado por Ollama cuando se solicita --context (GiB)."
         }
       }
     }

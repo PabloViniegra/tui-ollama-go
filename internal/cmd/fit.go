@@ -13,6 +13,7 @@ import (
 	"github.com/PabloViniegra/tui-ollama-go/internal/eval"
 	"github.com/PabloViniegra/tui-ollama-go/internal/hardware"
 	"github.com/PabloViniegra/tui-ollama-go/internal/loader"
+	"github.com/PabloViniegra/tui-ollama-go/internal/ollama"
 )
 
 type fitOpts struct {
@@ -20,6 +21,7 @@ type fitOpts struct {
 	AsJSON      bool
 	AsExplain   bool
 	PrintSchema bool
+	Context     int
 }
 
 type fitOutput struct {
@@ -29,6 +31,15 @@ type fitOutput struct {
 	AvailableGB float64       `json:"available_gb"`
 	Reason      string        `json:"reason"`
 	Model       catalog.Model `json:"model"`
+	Context     int           `json:"context_tokens,omitempty"`
+	WeightsGB   float64       `json:"weights_gb,omitempty"`
+	KVCacheGB   float64       `json:"kv_cache_gb,omitempty"`
+}
+
+type fitMemory struct {
+	Context   int
+	WeightsGB float64
+	KVCacheGB float64
 }
 
 func runFit(args []string, src *loader.Source, schema []byte) int {
@@ -58,7 +69,21 @@ func runFit(args []string, src *loader.Source, schema []byte) int {
 		fmt.Fprintf(os.Stderr, "unknown model %q — corré `ollama-fit --refresh` para actualizar el catálogo\n", opts.Model)
 		return 3
 	}
-	out, code := fitReport(hw, mdl, opts.AsJSON, opts.AsExplain)
+	var memory *fitMemory
+	if opts.Context > 0 {
+		metadata, err := ollama.NewClient("").ModelMetadata(context.Background(), mdl.Name)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			return 3
+		}
+		memory, err = contextMemory(metadata, opts.Context)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			return 3
+		}
+		mdl.SizeGB = memory.WeightsGB
+	}
+	out, code := fitReportWithMemory(hw, mdl, opts.AsJSON, opts.AsExplain, memory)
 	fmt.Println(out)
 	return code
 }
@@ -69,11 +94,24 @@ func parseFitFlags(args []string) (fitOpts, error) {
 	asJSON := fs.Bool("json", false, "emitir el veredicto como JSON de una línea")
 	asExplain := fs.Bool("explain", false, "mostrar el cálculo paso a paso")
 	printSchema := fs.Bool("print-schema", false, "imprime el JSON Schema del output --json y sale")
+	contextTokens := fs.Int("context", 0, "estimar memoria para este contexto; requiere el modelo instalado en Ollama")
 	if err := fs.Parse(args); err != nil {
 		return fitOpts{}, err
 	}
+	contextSet := false
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == "context" {
+			contextSet = true
+		}
+	})
+	if contextSet && *contextTokens <= 0 {
+		return fitOpts{}, fmt.Errorf("--context debe ser un entero positivo")
+	}
+	if *printSchema && contextSet {
+		return fitOpts{}, fmt.Errorf("--context no se puede combinar con --print-schema")
+	}
 	if !*printSchema && fs.NArg() != 1 {
-		return fitOpts{}, fmt.Errorf("uso: ollama-fit fit [--json|--explain] <modelo>")
+		return fitOpts{}, fmt.Errorf("uso: ollama-fit fit [--json|--explain] [--context tokens] <modelo>")
 	}
 	active := 0
 	if *asJSON {
@@ -93,6 +131,7 @@ func parseFitFlags(args []string) (fitOpts, error) {
 		AsJSON:      *asJSON,
 		AsExplain:   *asExplain,
 		PrintSchema: *printSchema,
+		Context:     *contextTokens,
 	}, nil
 }
 
@@ -130,13 +169,22 @@ func verdictExitCode(v eval.Verdict) int {
 }
 
 func fitReport(hw hardware.Info, mdl catalog.Model, asJSON, asExplain bool) (string, int) {
-	r := eval.Evaluate(hw, mdl)
+	return fitReportWithMemory(hw, mdl, asJSON, asExplain, nil)
+}
+
+func fitReportWithMemory(hw hardware.Info, mdl catalog.Model, asJSON, asExplain bool, memory *fitMemory) (string, int) {
+	var r eval.Result
+	if memory == nil {
+		r = eval.Evaluate(hw, mdl)
+	} else {
+		r = eval.EvaluateWithNeed(hw, mdl, memory.WeightsGB+memory.KVCacheGB)
+	}
 	available := availableGB(hw)
 	code := verdictExitCode(r.Verdict)
 
 	switch {
 	case asExplain:
-		return explainReport(hw, mdl, r, available), code
+		return explainReport(hw, mdl, r, available, memory), code
 	case asJSON:
 		payload := fitOutput{
 			Verdict:     strings.ToLower(r.Verdict.String()),
@@ -146,6 +194,11 @@ func fitReport(hw hardware.Info, mdl catalog.Model, asJSON, asExplain bool) (str
 			Reason:      r.Reason,
 			Model:       mdl,
 		}
+		if memory != nil {
+			payload.Context = memory.Context
+			payload.WeightsGB = memory.WeightsGB
+			payload.KVCacheGB = memory.KVCacheGB
+		}
 		b, err := json.Marshal(payload)
 		if err != nil {
 			return "", 3
@@ -154,19 +207,48 @@ func fitReport(hw hardware.Info, mdl catalog.Model, asJSON, asExplain bool) (str
 	}
 	text := fmt.Sprintf("%s → %s\n  backend : %s\n  reason  : %s\n  need    : %.1f GB / available %.1f GB\n",
 		r.Model.Name, r.Verdict, r.Backend, r.Reason, r.NeedGB, available)
+	if memory != nil {
+		text += fmt.Sprintf("  context : %d tokens (weights %.2f GB + KV cache %.2f GB, FP16 estimate)\n",
+			memory.Context, memory.WeightsGB, memory.KVCacheGB)
+	}
 	return text, code
 }
 
-func explainReport(hw hardware.Info, mdl catalog.Model, r eval.Result, available float64) string {
+func explainReport(hw hardware.Info, mdl catalog.Model, r eval.Result, available float64, memory *fitMemory) string {
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "Model:     %s (%s, %s, %s)\n", mdl.Name, mdl.Family, mdl.Params, mdl.Quant)
 	fmt.Fprintf(&sb, "Size:      %.1f GB\n", mdl.SizeGB)
-	fmt.Fprintf(&sb, "Need:      %.2f GB  (size × 1.2 overhead)\n", r.NeedGB)
+	if memory == nil {
+		fmt.Fprintf(&sb, "Need:      %.2f GB  (size × 1.2 overhead)\n", r.NeedGB)
+	} else {
+		fmt.Fprintf(&sb, "Need:      %.2f GB  (weights + KV cache)\n", r.NeedGB)
+		fmt.Fprintf(&sb, "Context:   %d tokens\n", memory.Context)
+		fmt.Fprintf(&sb, "Weights:   %.2f GB\n", memory.WeightsGB)
+		fmt.Fprintf(&sb, "KV cache:  %.2f GB (FP16 estimate)\n", memory.KVCacheGB)
+	}
 	fmt.Fprintf(&sb, "Available: %.2f GB  (%s)\n", available, hardwareSummary(hw))
 	fmt.Fprintf(&sb, "Backend:   %s\n", r.Backend)
 	fmt.Fprintf(&sb, "Rule:      %s\n", r.Reason)
 	fmt.Fprintf(&sb, "Verdict:   %s\n", r.Verdict)
 	return sb.String()
+}
+
+func contextMemory(metadata ollama.Metadata, contextTokens int) (*fitMemory, error) {
+	if contextTokens > metadata.ContextLength {
+		return nil, fmt.Errorf("el contexto solicitado (%d) supera el máximo del modelo (%d)", contextTokens, metadata.ContextLength)
+	}
+	kvCacheGB, err := eval.EstimateKVCacheGB(contextTokens, eval.KVCacheShape{
+		Layers: metadata.BlockCount, KVHeads: metadata.KVHeads,
+		KeyLength: metadata.KeyLength, ValueLength: metadata.ValueLength,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &fitMemory{
+		Context:   contextTokens,
+		WeightsGB: float64(metadata.SizeBytes) / (1024 * 1024 * 1024),
+		KVCacheGB: kvCacheGB,
+	}, nil
 }
 
 func hardwareSummary(hw hardware.Info) string {

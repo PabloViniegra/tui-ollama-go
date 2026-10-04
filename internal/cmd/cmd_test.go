@@ -5,6 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"os"
 	"runtime"
 	"strings"
 	"testing"
@@ -249,6 +253,17 @@ func TestFitReport_Explain_IncludesMath(t *testing.T) {
 	}
 }
 
+func TestFitReport_ContextExplainShowsBreakdown(t *testing.T) {
+	mdl := catalog.Model{Name: "small:7b", Family: "small", Params: "7B", Quant: "Q4_K_M", SizeGB: 5}
+	memory := &fitMemory{Context: 8192, WeightsGB: 5, KVCacheGB: 1}
+	out, _ := fitReportWithMemory(hardware.Info{RAMGB: 32}, mdl, false, true, memory)
+	for _, want := range []string{"weights + KV cache", "Context:   8192 tokens", "KV cache:  1.00 GB (FP16 estimate)"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("explain output missing %q\n--- output ---\n%s", want, out)
+		}
+	}
+}
+
 func TestFitReport_Explain_TightShowsRule(t *testing.T) {
 	hw := hardware.Info{RAMGB: 16}
 	m := catalog.Model{Name: "mid:8b", Family: "mid", Params: "8B", Quant: "Q4_K_M", SizeGB: 8}
@@ -309,6 +324,26 @@ func TestParseFitFlags_Explain(t *testing.T) {
 	}
 	if opts.AsJSON || !opts.AsExplain {
 		t.Errorf("got %+v, want AsJSON=false AsExplain=true", opts)
+	}
+}
+
+func TestParseFitFlags_Context(t *testing.T) {
+	opts, err := parseFitFlags([]string{"--context", "8192", "--json", "llama3.1:8b"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if opts.Context != 8192 || !opts.AsJSON {
+		t.Errorf("got %+v, want context=8192 and JSON output", opts)
+	}
+}
+
+func TestParseFitFlags_InvalidContext(t *testing.T) {
+	for _, value := range []string{"0", "-1"} {
+		t.Run(value, func(t *testing.T) {
+			if _, err := parseFitFlags([]string{"--context", value, "llama3.1:8b"}); err == nil {
+				t.Fatal("expected invalid context error")
+			}
+		})
 	}
 }
 
@@ -534,6 +569,81 @@ func TestRunFit_PrintSchema(t *testing.T) {
 			t.Errorf("runFit(%v) = %d, want 0", args, code)
 		}
 	}
+}
+
+func TestRunFit_ContextUsesInstalledMetadata(t *testing.T) {
+	server := fitMetadataServer(t, `[{"name":"llama3.1:8b","size":5000000000}]`, 131072)
+	defer server.Close()
+	t.Setenv("OLLAMA_HOST", server.URL)
+	src := fixedLoader(32, []catalog.Model{
+		{Name: "llama3.1:8b", Family: "llama3.1", Params: "8B", Quant: "Q4_K_M", SizeGB: 4.9},
+	})
+
+	output := captureStdout(t, func() {
+		if code := runFit([]string{"--json", "--context", "8192", "llama3.1:8b"}, src, nil); code != 0 {
+			t.Errorf("exit code = %d, want 0", code)
+		}
+	})
+	var result fitOutput
+	if err := json.Unmarshal([]byte(output), &result); err != nil {
+		t.Fatalf("invalid JSON output: %v\n%s", err, output)
+	}
+	if result.Context != 8192 || result.KVCacheGB != 1 {
+		t.Errorf("context/cache = %d/%v, want 8192/1 GB", result.Context, result.KVCacheGB)
+	}
+	wantWeights := float64(5_000_000_000) / (1024 * 1024 * 1024)
+	if result.WeightsGB != wantWeights || result.Model.SizeGB != wantWeights {
+		t.Errorf("weights = %v, model size = %v, want %v", result.WeightsGB, result.Model.SizeGB, wantWeights)
+	}
+	if result.NeedGB != wantWeights+1 {
+		t.Errorf("need_gb = %v, want %v", result.NeedGB, wantWeights+1)
+	}
+}
+
+func TestRunFit_ContextRejectsUnsupportedWindow(t *testing.T) {
+	server := fitMetadataServer(t, `[{"name":"llama3.1:8b","size":5000000000}]`, 4096)
+	defer server.Close()
+	t.Setenv("OLLAMA_HOST", server.URL)
+	src := fixedLoader(32, []catalog.Model{
+		{Name: "llama3.1:8b", Family: "llama3.1", Params: "8B", Quant: "Q4_K_M", SizeGB: 4.9},
+	})
+
+	if code := runFit([]string{"--context", "8192", "llama3.1:8b"}, src, nil); code != 3 {
+		t.Errorf("exit code = %d, want 3", code)
+	}
+}
+
+func fitMetadataServer(t *testing.T, models string, contextLength int) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/tags":
+			_, _ = fmt.Fprintf(w, `{"models":%s}`, models)
+		case "/api/show":
+			_, _ = fmt.Fprintf(w, `{"model_info":{"general.architecture":"llama","llama.context_length":%d,"llama.block_count":32,"llama.attention.head_count":32,"llama.attention.head_count_kv":8,"llama.attention.key_length":128,"llama.attention.value_length":128}}`, contextLength)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+}
+
+func captureStdout(t *testing.T, run func()) string {
+	t.Helper()
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	stdout := os.Stdout
+	os.Stdout = writer
+	run()
+	_ = writer.Close()
+	os.Stdout = stdout
+	output, err := io.ReadAll(reader)
+	_ = reader.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return strings.TrimSpace(string(output))
 }
 
 func TestRunLocal_EmptyArgs_OK(t *testing.T) {

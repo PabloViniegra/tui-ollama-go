@@ -29,6 +29,9 @@ func Run(args []string, version, commit, date string, schema []byte) int {
 	if len(args) > 1 && args[1] == "local" {
 		return runLocal(args[2:], src, execLocalRunner{})
 	}
+	if len(args) > 1 && args[1] == "bench" {
+		return runBench(args[2:])
+	}
 	fs := flag.NewFlagSet(args[0], flag.ContinueOnError)
 	refresh := fs.Bool("refresh", false, "ignora la caché y vuelve a scrapear ollama.com")
 	offline := fs.Bool("offline", false, "no usa red; usa el catálogo embebido de respaldo")

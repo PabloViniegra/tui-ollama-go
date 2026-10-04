@@ -3,6 +3,8 @@
 package eval
 
 import (
+	"fmt"
+
 	"github.com/PabloViniegra/tui-ollama-go/internal/catalog"
 	"github.com/PabloViniegra/tui-ollama-go/internal/hardware"
 )
@@ -28,6 +30,24 @@ type Result struct {
 // overhead añade un margen sobre el tamaño de los pesos para la KV-cache,
 // el contexto y el runtime. Ajustable.
 const overhead = 1.2
+
+// KVCacheShape contains the per-layer dimensions needed to estimate KV memory.
+type KVCacheShape struct {
+	Layers      int
+	KVHeads     int
+	KeyLength   int
+	ValueLength int
+}
+
+// EstimateKVCacheGB assumes two bytes per key/value element (FP16).
+func EstimateKVCacheGB(context int, shape KVCacheShape) (float64, error) {
+	if context <= 0 || shape.Layers <= 0 || shape.KVHeads <= 0 || shape.KeyLength <= 0 || shape.ValueLength <= 0 {
+		return 0, fmt.Errorf("contexto y metadatos de caché KV deben ser positivos")
+	}
+	bytes := float64(context) * float64(shape.Layers) * float64(shape.KVHeads) *
+		float64(shape.KeyLength+shape.ValueLength) * 2
+	return bytes / (1024 * 1024 * 1024), nil
+}
 
 // AppleGPUFraction: fracción de la RAM unificada que Metal puede dedicar a GPU.
 const AppleGPUFraction = 0.70
@@ -55,7 +75,11 @@ func (v Verdict) String() string {
 
 // Evaluate aplica la heurística.
 func Evaluate(h hardware.Info, m catalog.Model) Result {
-	need := m.SizeGB * overhead
+	return EvaluateWithNeed(h, m, m.SizeGB*overhead)
+}
+
+// EvaluateWithNeed applies the hardware verdict thresholds to a precomputed memory estimate.
+func EvaluateWithNeed(h hardware.Info, m catalog.Model, need float64) Result {
 	r := Result{Model: m, NeedGB: need}
 
 	// Memoria acelerada disponible y su etiqueta.

@@ -179,6 +179,38 @@ func TestEvaluateNeedGB(t *testing.T) {
 	}
 }
 
+func TestEstimateKVCacheGB(t *testing.T) {
+	got, err := EstimateKVCacheGB(8192, KVCacheShape{
+		Layers: 32, KVHeads: 8, KeyLength: 128, ValueLength: 128,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != 1 {
+		t.Errorf("EstimateKVCacheGB() = %v, want 1 GiB", got)
+	}
+}
+
+func TestEstimateKVCacheGBRejectsInvalidMetadata(t *testing.T) {
+	if _, err := EstimateKVCacheGB(0, KVCacheShape{Layers: 1, KVHeads: 1, KeyLength: 1, ValueLength: 1}); err == nil {
+		t.Fatal("expected invalid context error")
+	}
+	if _, err := EstimateKVCacheGB(1024, KVCacheShape{Layers: 1, KVHeads: 1, KeyLength: 0, ValueLength: 1}); err == nil {
+		t.Fatal("expected invalid metadata error")
+	}
+}
+
+func TestEvaluateWithNeed(t *testing.T) {
+	m := model("test", 4)
+	r := EvaluateWithNeed(nvidia(8), m, 7.5)
+	if r.NeedGB != 7.5 {
+		t.Errorf("NeedGB = %v, want 7.5", r.NeedGB)
+	}
+	if r.Verdict != Tight {
+		t.Errorf("Verdict = %v, want Tight", r.Verdict)
+	}
+}
+
 func TestEvaluateModelPreserved(t *testing.T) {
 	m := model("llama3.1:8b", 4.9)
 	r := Evaluate(noGPU(32), m)

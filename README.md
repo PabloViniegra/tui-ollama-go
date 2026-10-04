@@ -215,6 +215,25 @@ quieres entender por qué.
 
 `--json` y `--explain` son mutuamente excluyentes.
 
+#### Estimación para una ventana de contexto concreta (`--context`)
+
+```bash
+ollama-fit fit --context 8192 qwen2.5:7b
+ollama-fit fit --json --context 8192 qwen2.5:7b
+```
+
+Este cálculo requiere que el modelo ya esté instalado en Ollama. Usa su tamaño
+local y los metadatos de arquitectura de Ollama para sumar los pesos y una
+estimación de la caché KV en FP16, según las capas, las cabezas KV y el contexto.
+No descarga modelos. Si el contexto solicitado supera el máximo declarado por
+el modelo, el comando devuelve un error. Sin `--context`, se conserva la
+estimación orientativa anterior basada en el tamaño del catálogo.
+
+La caché KV es una estimación, no una medición del uso máximo del runtime. En
+arquitecturas con capas de atención compartida o de ventana deslizante, el uso
+real puede ser menor. El cálculo no añade un coste fijo de runtime; el veredicto
+aplica los márgenes de memoria existentes.
+
 #### Esquema del JSON (`--print-schema`)
 
 Para integración con scripts o `jq`, el contrato del JSON de `--json` está
@@ -226,7 +245,9 @@ ollama-fit fit --print-schema > fit_output.schema.json
 
 El archivo describe `verdict` (enum `good|tight|no`), `backend`, `need_gb`,
 `available_gb`, `reason` y `model.{name,family,params,quant,size_gb}`.
-`--print-schema` es mutuamente excluyente con `--json` y `--explain`.
+Cuando se usa `--context`, también aparecen `context_tokens`, `weights_gb` y
+`kv_cache_gb`. `--print-schema` es mutuamente excluyente con `--json`,
+`--explain` y `--context`.
 
 Para que el binario funcione desde cualquier directorio, sigue la sección
 [Instalación](#instalación) más arriba (el binario canónico se llama
@@ -274,12 +295,25 @@ Las variantes `*-cloud` (sin tamaño local) y los modelos que no estén en
 el catálogo se filtran. Si te falta alguno, corré `ollama-fit --refresh`
 para actualizar el catálogo desde ollama.com.
 
+#### Benchmark de rendimiento (`bench`)
+
+Para medir un modelo instalado sin descargar nada:
+
+```bash
+ollama-fit bench qwen2.5:7b
+ollama-fit bench --runs 3 --context 4096 --num-predict 128 qwen2.5:7b
+```
+
+Por defecto ejecuta tres veces un prompt fijo con temperatura cero y semilla
+42. Muestra el tiempo de carga de la primera ejecución y la velocidad agregada
+de evaluación del prompt y generación, según las métricas que devuelve Ollama.
+El modelo debe estar instalado. La API se toma de `OLLAMA_HOST` o, si no está
+definida, de `http://localhost:11434`.
+
 ### Ideas para iterar
 
 - Leer también `…/tags` para obtener todas las cuantizaciones
   (q4_K_M, q8_0, fp16…).
-- **Benchmark real**: ejecutar un prompt corto en `ollama run` y medir
-  tokens/s.
 
 > Ya implementado: el subcomando `ollama-fit local` cubre la idea de
 > "modelos locales" leyendo `ollama list` y cruzándolo con el catálogo
@@ -289,15 +323,16 @@ para actualizar el catálogo desde ollama.com.
 
 ```
 ollama-fit/
-├── go.mod
-├── main.go                     # detecta hardware, obtiene el catálogo, evalúa y lanza la TUI
+├── main.go                     # punto de entrada
+├── assets/fit_output.schema.json
 └── internal/
-    ├── hardware/hardware.go    # detección de CPU/RAM/GPU multiplataforma
-    ├── catalog/scrape.go       # extracción en vivo de ollama.com + caché
-    ├── catalog/catalog.go      # catálogo embebido de respaldo (offline)
-    ├── eval/eval.go            # heurística de clasificación
-    ├── loader/loader.go        # inyección de hardware.Detect + catalog.Fetch
-    ├── doctor/doctor.go        # auditoría de herramientas del sistema
-    ├── locallist/locallist.go  # cruza 'ollama list' con el catálogo
-    └── tui/tui.go              # interfaz Bubble Tea
+    ├── cmd/                    # subcomandos y formato de salida
+    ├── ollama/                 # cliente de la API local de Ollama
+    ├── hardware/               # detección de CPU/RAM/GPU
+    ├── catalog/                # catálogo remoto, caché y respaldo offline
+    ├── eval/                   # heurística y estimación de memoria
+    ├── loader/                 # origen de hardware y catálogo
+    ├── doctor/                 # diagnóstico de herramientas
+    ├── locallist/              # modelos locales instalados
+    └── tui/                    # interfaz Bubble Tea
 ```
